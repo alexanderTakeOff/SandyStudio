@@ -37,6 +37,7 @@ async function main(): Promise<void> {
     .maybeSingle();
   if (epErr || !ep) throw new Error(`эпизода ${episodeId} нет: ${epErr?.message ?? 'not found'}`);
 
+  // Тот же резолв, что у роута /api/mind/turn — одна логика, два входа.
   let threadId = await resolveOpenThreadId(sb as never, { episodeId, seriesId: ep.series_id });
   if (!threadId) {
     const thread = await createThread(sb as never, {

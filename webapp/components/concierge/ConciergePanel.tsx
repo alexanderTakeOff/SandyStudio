@@ -77,6 +77,11 @@ const THREAD_KEY = 'sandystudio.prodassistant.threadId';
 // (2026-06-23) в mind-режиме отменено — оно и было той кашей, где сериалы
 // мешались в одну ленту.
 const MIND_CHAT = process.env.NEXT_PUBLIC_MIND_CHAT === '1';
+// Ф5 миграции «Полина в харнес»: разговор идёт через МОСТ — панель кладёт
+// строку (/api/mind/turn), мост ведёт headless-сессию, ответ приходит
+// Realtime'ом. Флаг отдельный от MIND_CHAT ради отката: снять переменную —
+// панель вернётся на старый стриминговый роут.
+const MIND_BRIDGE = MIND_CHAT && process.env.NEXT_PUBLIC_MIND_BRIDGE === '1';
 const CHAT_ENDPOINT = MIND_CHAT ? '/api/mind/chat' : '/api/concierge/chat';
 const threadKeyFor = (episodeId: string | null): string =>
   MIND_CHAT ? `sandystudio.mind.threadId.${episodeId ?? 'studio'}` : THREAD_KEY;
@@ -627,7 +632,9 @@ export function ConciergePanel() {
       // chat-internal sets; the regular chat-route assistant turn (which
       // arrives via the streaming POST response) does NOT have this flag,
       // so the de-dup-with-streaming concern from Realtime stays solved.
-      if (turn.role === 'assistant' && m.auto_react === true) {
+      // Ф5: ходы моста (m.bridge) приходят ТОЛЬКО Realtime'ом — рисуем их той
+      // же веткой, что server-authored auto-react.
+      if (turn.role === 'assistant' && (m.auto_react === true || m.bridge === true)) {
         // 2026-05-26 — chat-internal persists intermediate `🔧 toolName(args)`
         // tool_call turns with auto_react=true for audit. Director sees them
         // as visual noise in the chat. Drop them on the UI side; the
@@ -923,6 +930,41 @@ export function ConciergePanel() {
     if (!text || streaming) return;
 
     const submittedAt = new Date().toISOString();
+
+    // Ф5: путь МОСТА — одна INSERT-строка, никакого стрима. Ответ Полины
+    // придёт Realtime'ом (ветка m.bridge в onNewTurn); занятость показывает
+    // плашка «ход в работе», которую снимет его приход.
+    if (MIND_BRIDGE && openEpisodeId) {
+      setMessages((prev) => [...prev, { role: 'user', content: text, createdAt: submittedAt }]);
+      setInput('');
+      setStreaming(true);
+      try {
+        const res = await fetch('/api/mind/turn', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ episodeId: openEpisodeId, text }),
+        });
+        const j = (await res.json().catch(() => ({}))) as { ok?: boolean; threadId?: string; error?: string };
+        if (!res.ok || !j.ok) {
+          setMessages((prev) => [
+            ...prev,
+            { role: 'assistant', content: `⚠️ мост не принял сообщение: ${j.error ?? res.status}` },
+          ]);
+        } else if (j.threadId && j.threadId !== threadId) {
+          setThreadId(j.threadId);
+          try { localStorage.setItem(threadKeyFor(openEpisodeId), j.threadId); } catch { /* ignore */ }
+        }
+      } catch (err) {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: `⚠️ мост недоступен: ${err instanceof Error ? err.message : err}` },
+        ]);
+      } finally {
+        setStreaming(false);
+      }
+      return;
+    }
+
     const next: Message[] = [
       ...messages,
       { role: 'user', content: text, createdAt: submittedAt },
@@ -1181,6 +1223,14 @@ export function ConciergePanel() {
   // which propagates as req.signal.aborted in the chat route → the
   // server emits {"t":"cancelled"} then closes.
   function handleCancel() {
+    if (MIND_BRIDGE && openEpisodeId) {
+      // Мост убьёт дерево процесса хода (taskkill /T) и допишет честную строку.
+      void fetch('/api/mind/turn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ episodeId: openEpisodeId, cancel: true }),
+      }).catch(() => {});
+    }
     abortControllerRef.current?.abort();
   }
 

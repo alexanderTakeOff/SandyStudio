@@ -12,6 +12,10 @@ import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, GovernanceBlockError, ValidationError } from '@/lib/api/errors';
 import { enforceMode, type GovernanceEpisode } from '@/lib/governance';
 import { inngest } from '@/lib/inngest/client';
+// Ф4 миграции: события кнопок идут через logEvent — единственную дверь в
+// activity_events. Прямые insert'ы обходили нотификационную логику, и клик
+// Директора не доходил ни до чата, ни до ума (D92).
+import { logEvent } from '@/lib/api/events';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,7 +61,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     notes: body.notes ?? null,
   });
 
-  await supabase.from('activity_events').insert({
+  await logEvent(supabase, {
     event_type: 'approval_granted',
     severity: 'info',
     title: `Approved ${body.approvalType} on ${ep.episode_code}`,
@@ -65,7 +69,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     actor: user.id,
     episode_id: id,
     metadata: { approval_type: body.approvalType, governance_code: decision.code },
-  } as never);
+  });
 
   // ── BRIEF approval is the pipeline starter ──────────────────────────────────
   // Find the brief asset, flip status DRAFT/REVIEW → APPROVED, flip episode
@@ -113,7 +117,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       });
       firedEvent = { name: 'sandystudio/exec-sw/write-script', ids };
 
-      await supabase.from('activity_events').insert({
+      await logEvent(supabase, {
         event_type: 'pipeline_started',
         severity: 'info',
         title: `Pipeline started for ${ep.episode_code}`,
@@ -121,9 +125,9 @@ export const POST = withApiHandler(async (req, ctx) => {
         actor: user.id,
         episode_id: id,
         metadata: { brief_asset_id: brief.id, inngest_event_ids: ids },
-      } as never);
+      });
     } else {
-      await supabase.from('activity_events').insert({
+      await logEvent(supabase, {
         event_type: 'pipeline/brief-approved-awaiting-cast',
         severity: 'info',
         title: `Brief approved for ${ep.episode_code} — awaiting cast`,

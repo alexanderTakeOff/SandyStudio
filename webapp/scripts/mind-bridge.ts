@@ -46,6 +46,34 @@ interface MindSession {
 /** Ходы в полёте — по эпизоду. In-memory + зеркало в episodes.metadata. */
 const inFlight = new Map<string, ChildProcessWithoutNullStreams>();
 
+/**
+ * Ф4: события студии, которые БУДЯТ Полину (кнопки Директора и просьбы
+ * конвейера). Список моста, не общий actionable: старое платное пробуждение
+ * (exec-pa-react → мёртвый роут, D93) умирает на Ф6, а `asset_created` от её
+ * же инструментов будить не должен — эхо-защита по построению.
+ */
+const WAKE_EVENT_TYPES = new Set([
+  'approval_granted',
+  'pipeline_started',
+  'episode_settings_changed',
+  'decision_requested',
+  'input_requested',
+  'agent_failed',
+  'approval_revision',
+  'approval_rejected',
+  'blocker_raised',
+  'budget_threshold_reached',
+  'revision_requested',
+  'canon_extension_proposed',
+]);
+
+/**
+ * События старше старта моста не проигрываются: у прошлых недель есть
+ * непринятые system-строки, и wake по ним был бы платным разбором древностей.
+ * Событие, случившееся при мёртвом мосте, пропадает — известное ограничение v1.
+ */
+const BRIDGE_EPOCH = new Date().toISOString();
+
 function log(msg: string): void {
   console.log(`[bridge ${new Date().toISOString().slice(11, 19)}] ${msg}`);
 }
@@ -277,6 +305,29 @@ async function pollOnce(): Promise<void> {
     if (!meta.for_bridge || meta.bridge || meta.cancel) continue;
     const list = byThread.get(t.thread_id) ?? [];
     list.push({ id: t.id, content: t.content });
+    byThread.set(t.thread_id, list);
+  }
+
+  // 3. Ф4 — ПРОБУЖДЕНИЕ ПО СОБЫТИЯМ: system-строки инжекта триггера 0049
+  // (кнопки Директора после 0056, просьбы конвейера). Кнопка = приказ работать.
+  const { data: sysTurns } = await sb
+    .from('concierge_turns')
+    .select('id,thread_id,content,metadata,created_at')
+    .eq('role', 'system')
+    .eq('event_type', 'message')
+    .contains('metadata', { kind: 'pipeline_event' })
+    .gt('created_at', BRIDGE_EPOCH)
+    .order('created_at', { ascending: true })
+    .limit(30);
+  for (const t of sysTurns ?? []) {
+    const meta = (t.metadata ?? {}) as Record<string, unknown>;
+    if (meta.bridge) continue;
+    if (!WAKE_EVENT_TYPES.has(String(meta.event_type))) {
+      await claimTurns([t.id], 'wake-skip');
+      continue;
+    }
+    const list = byThread.get(t.thread_id) ?? [];
+    list.push({ id: t.id, content: `[СОБЫТИЕ СТУДИИ] ${t.content}` });
     byThread.set(t.thread_id, list);
   }
 
