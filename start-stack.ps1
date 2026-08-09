@@ -49,34 +49,41 @@ $PolinaClone = 'C:\SandyStudio-polina'
 # спавнят ход (двойной ответ, двойные деньги, гонка за один session_id). Стоп-фаза их не
 # разведёт: она гасит процессы со СВОИМ корнем в командной строке, а мост из клона несёт
 # чужой, и переживает любое число рестартов.
+# ВЕСЬ ТЕКСТ НИЖЕ — ASCII, и это не стилистика. `powershell.exe` 5.1 читает .ps1 без BOM
+# как ANSI: кириллица в КОММЕНТАРИЯХ безвредна (парсер их пропускает — потому файл жил с
+# ней всегда), а кириллица в СТРОКОВОМ ЛИТЕРАЛЕ рвёт парсер, и скрипт падает
+# ParserError'ом вместо того, чтобы отказать. Проверено живьём 09.08: отказ, написанный
+# по-русски, не отказал. Сообщение, которое обязано сработать, не имеет права зависеть от
+# кодировки файла.
 if ($RepoRoot.TrimEnd('\') -ieq $PolinaClone.TrimEnd('\')) {
   Write-Host ''
-  Write-Host '  ┌──────────────────────────────────────────────────────────────┐' -ForegroundColor Red
-  Write-Host '  │  СТОП. Это КЛОН ПОЛИНЫ — здесь стек НЕ запускают.            │' -ForegroundColor Red
-  Write-Host '  └──────────────────────────────────────────────────────────────┘' -ForegroundColor Red
+  Write-Host '  ==============================================================' -ForegroundColor Red
+  Write-Host '   STOP. This is POLINA CLONE - the stack is NOT started here.' -ForegroundColor Red
+  Write-Host '  ==============================================================' -ForegroundColor Red
   Write-Host ''
-  Write-Host "  Дерево:  $RepoRoot" -ForegroundColor Yellow
-  Write-Host '  Роль:    рабочая поверхность headless-сессии Полины (мост спавнит её ЗДЕСЬ).' -ForegroundColor Yellow
-  Write-Host '  Причина: лаунчеры тут прибиты к :3000/:8288 — портам МАСТЕРА. Серверы молча' -ForegroundColor Yellow
-  Write-Host '           не встанут, а МОСТ встанет — и станет вторым. Два моста двоят' -ForegroundColor Yellow
-  Write-Host '           каждый ход Полины: двойной ответ, двойные деньги, гонка за сессию.' -ForegroundColor Yellow
+  Write-Host "  Tree:    $RepoRoot" -ForegroundColor Yellow
+  Write-Host '  Role:    working surface of Polina headless session (the bridge spawns her HERE).' -ForegroundColor Yellow
+  Write-Host '  Why not: launchers here default to :3000/:8288 - the MASTER ports. App and' -ForegroundColor Yellow
+  Write-Host '           Inngest would silently fail on busy ports, but the BRIDGE would start' -ForegroundColor Yellow
+  Write-Host '           and become the SECOND one. Two bridges double every Polina turn:' -ForegroundColor Yellow
+  Write-Host '           double answer, double money, race for one session_id.' -ForegroundColor Yellow
   Write-Host ''
-  Write-Host '  Стек живёт в РАБОЧЕМ дереве: C:\SandyStudio-nx  ->  start-stack-nx.cmd' -ForegroundColor Cyan
-  Write-Host '  (мост Полины поднимается оттуда же и сам; отдельных действий не нужно)' -ForegroundColor Cyan
+  Write-Host '  The stack lives in the WORK tree:  C:\SandyStudio-nx  ->  start-stack-nx.cmd' -ForegroundColor Cyan
+  Write-Host '  (Polina bridge comes up from there by itself - no separate action needed)' -ForegroundColor Cyan
   Write-Host ''
-  Read-Host 'Enter — закрыть'
+  Read-Host 'Enter to close'
   exit 1
 }
 
 Set-Location $Web
 
 # Где мы и на каких портах — В НАЧАЛЕ, а не только в конце: деревьев несколько, и окно
-# читают в момент запуска, а не через 20 секунд.
-$TreeName = if ($RepoRoot -match 'SandyStudio-nx$') { 'РАБОЧЕЕ (nx) — новая парадигма' }
-            elseif ($RepoRoot -match 'SandyStudio$')  { 'МАСТЕР' }
-            else { 'прочее' }
+# читают в момент запуска, а не через 20 секунд. Литералы — ASCII по причине выше.
+$TreeName = if ($RepoRoot -match 'SandyStudio-nx$') { 'WORK TREE (nx) - new paradigm' }
+            elseif ($RepoRoot -match 'SandyStudio$')  { 'MASTER' }
+            else { 'other' }
 Write-Host ''
-Write-Host "  == СТЕК ПОДНИМАЕТСЯ В ДЕРЕВЕ: $TreeName ==" -ForegroundColor Green
+Write-Host "  == STARTING STACK IN: $TreeName ==" -ForegroundColor Green
 Write-Host "     $RepoRoot   ->   App :$Port | Inngest :$InngestPort (gateway :$InngestGatewayPort)" -ForegroundColor Green
 Write-Host ''
 
