@@ -28,7 +28,9 @@ import { persistTurn, getThread } from '../lib/concierge/threads';
 const CLONE_DIR = process.env.POLINA_CLONE_DIR ?? 'C:\\SandyStudio-polina';
 const CLONE_WEBAPP = resolve(CLONE_DIR, 'webapp');
 const ROLE_FILE = resolve(CLONE_WEBAPP, 'roles', 'polina.md');
-const SETTINGS_FILE = resolve(CLONE_DIR, '.claude', 'settings.json');
+// НЕ settings.json репо (его делят сессии Тео) — отдельный файл Полины,
+// подаётся явно (--settings — иначе хуки в headless не грузятся, Ш54).
+const SETTINGS_FILE = resolve(CLONE_DIR, '.claude', 'polina-settings.json');
 const MODEL = process.env.MIND_BRIDGE_MODEL ?? 'opus';
 const POLL_MS = 2_500;
 const TURN_TIMEOUT_MS = Number(process.env.MIND_BRIDGE_TURN_TIMEOUT_MS ?? 45 * 60 * 1000);
