@@ -31,6 +31,23 @@ async function main() {
     console.log(`  ${a.status.padEnd(9)} v${a.version}  ${a.filename}`);
   }
 
+  const { data: stb } = await sb
+    .from('assets')
+    .select('filename,content,metadata')
+    .eq('episode_id', ep.id)
+    .like('file_type', 'STB%')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (stb) {
+    const txt = stb.content ?? '';
+    const hits = txt.match(/duration[_ ]?(seconds|сек)?[^\n]{0,40}/gi) ?? [];
+    console.log(`\nраскадровка ${stb.filename}: упоминаний длительности ${hits.length}`);
+    hits.slice(0, 8).forEach((h) => console.log('   ', h.trim()));
+    const meta = (stb.metadata ?? {}) as Record<string, unknown>;
+    console.log('   metadata keys:', Object.keys(meta).join(', ') || '—');
+  }
+
   const { localCacheAbsPath } = await import('../lib/media-cache');
   const { existsSync, statSync } = await import('node:fs');
   const { data: imgs } = await sb
