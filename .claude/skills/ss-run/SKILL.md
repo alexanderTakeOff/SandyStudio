@@ -975,3 +975,23 @@ NEEDS_HUMAN_TWEAK). Изделие в DRAFT для Директора НЕ СУ�
 **След прямого пути виден фиду:** каждый persist эмитит `asset_created` в
 `activity_events` — realtime-подписки таймлайна и пузырь в чате срабатывают без опроса.
 Если изделие не появилось в ленте мгновенно — это снова дефект, а не норма.
+
+### 9.13 НОВЫЙ КАНАЛ К ПОЛИНЕ — мост (Ф2-Ф5 миграции, 09.08 вечер)
+
+**Полина живёт в headless-сессиях Claude Code** (клон C:\SandyStudio-polina), НЕ в
+/api/mind/chat. Канал — БАЗА: director-строка в `concierge_turns` c
+`metadata.for_bridge` → мост (`scripts/mind-bridge.ts`, поднимается start-stack'ом,
+лог `webapp/bridge.log`) спавнит ход `claude -p --resume` → ответ строкой обратно.
+
+- **Сказать слово headless:** `npx tsx scripts/mind-say.ts --episode <uuid> "текст"`
+  (из webapp/). `--cancel` — оборвать ход. Ответ печатается с cost/session.
+- **Панель webapp** говорит тем же путём (`/api/mind/turn`), ответ приходит Realtime'ом.
+- **Карта сессий:** `episodes.metadata.mind_session` (session_id, busy). Замок busy
+  переживает мост; осиротевшие снимает старт моста.
+- **Будят её и СОБЫТИЯ** (аппрув, настройки, agent_failed…) — см. WAKE_EVENT_TYPES в
+  мосте; события при мёртвом мосте пропадают (v1).
+- **Гейты — хуки клона** (`.claude/polina-settings.json`, АБСОЛЮТНЫЕ пути): publish/master
+  — deny, деньги — gate-check до запуска, рапорт без инструмента — Stop-block.
+- **Деньги хода** — `budget_log` строка `POLINA-MIND/mind-turn` из result движка.
+- Старый /api/mind/chat ещё жив (панель на него откатывается снятием
+  `NEXT_PUBLIC_MIND_BRIDGE`); сносится на Ф6.
