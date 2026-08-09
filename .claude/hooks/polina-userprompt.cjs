@@ -5,9 +5,7 @@ const path = require('node:path');
 
 try {
   const out = execFileSync('npx', ['tsx', 'scripts/gate-check.ts', '--kind', 'context'], {
-    cwd: process.env.CLAUDE_PROJECT_DIR
-      ? path.join(process.env.CLAUDE_PROJECT_DIR, 'webapp')
-      : process.cwd(),
+    cwd: path.join(process.env.CLAUDE_PROJECT_DIR ?? 'C:/SandyStudio-polina', 'webapp'),
     env: process.env,
     encoding: 'utf8',
     shell: process.platform === 'win32',

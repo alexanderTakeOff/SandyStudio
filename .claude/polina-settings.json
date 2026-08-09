@@ -1,24 +1,25 @@
 {
+  "_comment": "Хуки Полины. Пути АБСОЛЮТНЫЕ: $CLAUDE_PROJECT_DIR/%VAR% в hook-командах на Windows не разворачиваются (проверено смоуком Ш54 и живым отказом гейта 09.08). Файл подаётся мостом явно: --settings C:/SandyStudio-polina/.claude/polina-settings.json — на сессии Тео не действует.",
   "hooks": {
     "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/polina-pretool.cjs\"" }
+          { "type": "command", "command": "node \"C:/SandyStudio-polina/.claude/hooks/polina-pretool.cjs\"" }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/polina-stop.cjs\"" }
+          { "type": "command", "command": "node \"C:/SandyStudio-polina/.claude/hooks/polina-stop.cjs\"" }
         ]
       }
     ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/polina-userprompt.cjs\"" }
+          { "type": "command", "command": "node \"C:/SandyStudio-polina/.claude/hooks/polina-userprompt.cjs\"" }
         ]
       }
     ]

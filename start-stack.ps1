@@ -45,6 +45,10 @@ Write-Host "== stopping app on :$Port and inngest on :$InngestPort ==" -Foregrou
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
   Where-Object { $_.CommandLine -like '*next*start*' -and $_.CommandLine -like "*$RepoRoot*" } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+# Мост Полины гасим тоже — иначе рестарт стека плодит ВТОРОЙ мост и ходы двоятся.
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+  Where-Object { $_.CommandLine -like '*mind-bridge*' -and $_.CommandLine -like "*$RepoRoot*" } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Get-CimInstance Win32_Process -Filter "Name='inngest.exe'" |
   Where-Object { $_.CommandLine -like "*$SqliteDir*" } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
@@ -101,6 +105,20 @@ Start-LogRotation "$Web\prod.log"
 Write-BootBanner "$Web\prod.log"
 Start-Process powershell -ArgumentList '-NoProfile','-Command',
   "Set-Location $Web; npm run start -- -p $Port *>> `"$Web\prod.log`"" -WindowStyle Minimized
+
+# Ф2 миграции «Полина в харнес» (2026-08-09): МОСТ — канал панель↔headless-сессия
+# Полины. Живёт и умирает со стеком; отдельных действий Директора нет. Гасится
+# выше вместе с node-процессами дерева (командная строка содержит $RepoRoot).
+$PolinaClone = 'C:\SandyStudio-polina'
+if (Test-Path (Join-Path $PolinaClone 'webapp\roles\polina.md')) {
+  Write-Host '== starting mind-bridge (Polina harness) ==' -ForegroundColor Cyan
+  Start-LogRotation "$Web\bridge.log"
+  Write-BootBanner "$Web\bridge.log"
+  Start-Process powershell -ArgumentList '-NoProfile','-Command',
+    "Set-Location $Web; npx tsx scripts/mind-bridge.ts *>> `"$Web\bridge.log`"" -WindowStyle Minimized
+} else {
+  Write-Host "== mind-bridge SKIPPED: клона Полины нет ($PolinaClone) ==" -ForegroundColor Yellow
+}
 
 Write-Host '== waiting for boot (18s) ==' -ForegroundColor Cyan
 Start-Sleep -Seconds 18

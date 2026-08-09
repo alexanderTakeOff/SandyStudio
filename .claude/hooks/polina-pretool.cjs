@@ -31,9 +31,10 @@ process.stdin.on('end', () => {
   if (/scripts[\\/]run[\\/](gen-frame|gen-video|stitch)(\.ts)?\b/.test(cmd)) {
     try {
       execFileSync('npx', ['tsx', 'scripts/gate-check.ts', '--kind', 'spend'], {
-        cwd: process.env.CLAUDE_PROJECT_DIR
-          ? require('node:path').join(process.env.CLAUDE_PROJECT_DIR, 'webapp')
-          : process.cwd(),
+        cwd: require('node:path').join(
+          process.env.CLAUDE_PROJECT_DIR ?? 'C:/SandyStudio-polina',
+          'webapp',
+        ),
         env: process.env,
         stdio: ['ignore', 'ignore', 'pipe'],
         shell: process.platform === 'win32',
