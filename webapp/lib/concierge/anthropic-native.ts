@@ -15,7 +15,12 @@ import Anthropic from '@anthropic-ai/sdk';
 import type OpenAI from 'openai';
 import type { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions';
 import { conciergeAnthropicNativeEnabled } from './llm';
-import type { MultimodalToolResult } from '../mind/tool-bridge';
+// Ф6: lib/mind/tool-bridge умер — тип живёт здесь до сноса этого модуля (Ф6.4b).
+interface MultimodalToolResult {
+  __sandystudio_multimodal: true;
+  text: string;
+  images: Array<{ mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'; base64: string }>;
+}
 
 function isMultimodalToolResult(v: unknown): v is MultimodalToolResult {
   return !!v && typeof v === 'object' && (v as { __sandystudio_multimodal?: unknown }).__sandystudio_multimodal === true;

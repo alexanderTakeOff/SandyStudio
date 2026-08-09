@@ -13,15 +13,176 @@
 //   npx tsx scripts/gen-role-polina.ts           → сверить; разошлось — exit 1
 //
 // Детерминизм обязателен: никаких дат и хэшей в теле — снапшот-тест сравнивает
-// байты. Когда Ф6.3 снесёт lib/mind/prompt.ts, buildRouteBlock/loadDoctrine
-// переезжают СЮДА (генератор — их единственный выживший потребитель).
+// байты. Ф6.3 (09.08): lib/mind/prompt.ts снесён — buildRouteBlock/loadDoctrine
+// живут ЗДЕСЬ (генератор был их единственным выжившим потребителем). Спеки
+// инструментов собираются интроспекцией каталога run/ (как tools-registry) —
+// новый инструмент попадает в карту сам, без правки списка импортов.
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { loadDoctrine, buildRouteBlock } from '../lib/mind/prompt';
-import { mindToolSpecs } from '../lib/mind/tool-bridge';
+import { pathToFileURL } from 'node:url';
+import { ROW_DEFINITIONS } from '../lib/api/pipeline-stages';
+import type { ToolSpec } from './run/_tool';
 
 const ROLE_PATH = resolve(process.cwd(), 'roles', 'polina.md');
 const SKILLS_DIR = resolve(process.cwd(), '..', '.claude', 'skills');
+const RUN_DIR = resolve(process.cwd(), 'scripts', 'run');
+
+// ── Переехало из lib/mind/prompt.ts (Ф6.3) — дословно, с историей уроков ──────
+
+/**
+ * Доктрина читается НА ВЫПОЛНЕНИИ и входит в роль дословно: пересказ разъезжается
+ * с файлом при первой правке — ровно тот дрейф, что убил старые якоря (компас 07-27).
+ */
+export function loadDoctrine(): string {
+  const path = resolve(process.cwd(), '..', 'docs', 'doctrine', 'paradigm-architecture.md');
+  const raw = readFileSync(path, 'utf-8'); // нет файла → бросает, и это правильно
+  const first = raw.indexOf('\n---\n');
+  const last = raw.lastIndexOf('\n---\n');
+  if (first < 0 || last <= first) {
+    throw new Error(`${path}: не нашёл тело доктрины между разделителями --- — формат файла изменился`);
+  }
+  return raw.slice(first + 5, last).trim();
+}
+
+const PHASE_TITLES: ReadonlyArray<{ phase: string; title: string }> = [
+  { phase: 'pre-production', title: 'ПРЕДПРОДАКШН' },
+  { phase: 'production', title: 'ПРОДАКШН' },
+  { phase: 'generation', title: 'ГЕНЕРАЦИЯ' },
+  { phase: 'distribution', title: 'ДИСТРИБУЦИЯ' },
+  { phase: 'analytics', title: 'АНАЛИТИКА' },
+];
+
+/** Авторский текст Директора (редакция 08.08, дословник — docs/plans/mind-route-director.md). */
+const STATION_NOTES: Readonly<Record<string, string>> = {
+  brief: 'слушаешь Директора → предлагаешь ВАРИАНТЫ → он выбирает',
+  casting: 'предлагаешь ВАРИАНТЫ каста из канона серии → он выбирает',
+  script_critic: 'дорабатываешь; потолок правок — в настройках эпизода, не на глаз',
+  episode_references: 'ПИЛОТ: делаешь ПЕРВЫЕ ДВА рефа, не весь набор',
+  visual_generator:
+    'ПИЛОТ: два ХАРАКТЕРНЫХ шота (по умолчанию первые два, но лучше выбрать показательные)',
+  final_cut:
+    'ffmpeg с учётом правок длительностей Директора и залитой музыки; ' +
+    'у музыки fade 2 сек по умолчанию, переходы — по смыслу или его указанию',
+};
+
+/** После этих станций — ЧЕРТА: ум останавливается и ждёт Директора. */
+const GATE_AFTER: ReadonlySet<string> = new Set([
+  'script_critic',
+  'continuity_critic',
+  'episode_references',
+  'visual_generator',
+]);
+
+const PHASE_CONDITION: Readonly<Record<string, string>> = {
+  distribution:
+    'ТОЛЬКО если в брифе сказано, что эпизод выкладывается на канал YouTube. ' +
+    'Нет чётких указаний — НЕ ДЕЛАТЬ ВОВСЕ.',
+  analytics: 'Та же условность: только при явном указании о публикации.',
+};
+
+interface RouteContext {
+  tools: ReadonlyArray<{ name: string; stations?: readonly string[] }>;
+  skills: ReadonlyArray<{ slug: string; summary: string; agents?: readonly string[] }>;
+}
+
+/**
+ * Карта конвейера — ВЫВЕДЕННАЯ из реестра стадий, не пересказанная (D86).
+ * Второй список станций разошёлся бы с первым на первой же правке конвейера.
+ */
+function buildRouteBlock(ctx: RouteContext): string {
+  const toolsByStation = new Map<string, string[]>();
+  const crossCutting: string[] = [];
+  for (const spec of ctx.tools) {
+    if (!spec.stations || spec.stations.length === 0) {
+      crossCutting.push(spec.name);
+      continue;
+    }
+    for (const st of spec.stations) {
+      const list = toolsByStation.get(st) ?? [];
+      list.push(spec.name);
+      toolsByStation.set(st, list);
+    }
+  }
+
+  const skillsByStation = new Map<string, string[]>();
+  for (const s of ctx.skills) {
+    for (const r of ROW_DEFINITIONS) {
+      if (!s.agents || s.agents.length === 0) continue;
+      if (r.agents.some((a) => s.agents!.includes(a))) {
+        const list = skillsByStation.get(r.id) ?? [];
+        if (!list.includes(s.slug)) list.push(s.slug);
+        skillsByStation.set(r.id, list);
+      }
+    }
+  }
+
+  const lines: string[] = [];
+  for (const { phase, title } of PHASE_TITLES) {
+    const rows = ROW_DEFINITIONS.filter((r) => r.phase === phase);
+    if (rows.length === 0) continue;
+    const cond = PHASE_CONDITION[phase];
+    lines.push(cond ? `${title} — ${cond}` : `${title}:`);
+    for (const r of rows) {
+      const serves = r.serves
+        ? r.role === 'critic'
+          ? ` (судит: ${r.serves})`
+          : ` (готовит для: ${r.serves})`
+        : '';
+      const who =
+        r.role === 'input'
+          ? 'ВХОД ДИРЕКТОРА — просишь и ЖДЁШЬ, сама не делаешь'
+          : r.unstaffed
+            ? 'станции пока нет — честно скажи, что её нет'
+            : `твоя линза: ${r.role}${serves}`;
+      lines.push(`  · ${r.label} [${r.id}] — ${who}`);
+
+      const note = STATION_NOTES[r.id];
+      if (note) lines.push(`      ${note}`);
+      const tools = toolsByStation.get(r.id);
+      if (tools?.length) lines.push(`      инструменты: ${tools.join(' · ')}`);
+      else if (r.role !== 'input') lines.push('      инструмента ПОКА НЕТ — скажи об этом вслух, не обходи');
+      const skills = skillsByStation.get(r.id);
+      if (skills?.length) lines.push(`      скиллы (грузи Skill tool'ом): ${skills.join(' · ')}`);
+
+      if (GATE_AFTER.has(r.id)) {
+        lines.push('  ── ГЕЙТ: зовёшь Директора на утверждение и ЖДЁШЬ ──');
+      }
+    }
+  }
+
+  const cross = crossCutting.length
+    ? `\n\nСквозные инструменты (нужны на любой станции): ${crossCutting.join(' · ')}`
+    : '';
+
+  return `[МАРШРУТ СТУДИИ — станции конвейера, выведены из реестра]
+Ты играешь все линзы сама, но ПОРЯДОК станций — не твой выбор: это поток студии,
+а не то, как удобнее или быстрее. Пропуск станции — осознанное решение, названное
+ВСЛУХ и обоснованное; молча спрямить маршрут нельзя. Директору нужен не кратчайший
+путь к картинке, а пройденный конвейер.
+
+Три вида станций, и разница между ними обязательна к соблюдению:
+· ВХОД ДИРЕКТОРА — ты его не производишь, ты его ЗАПРАШИВАЕШЬ и ждёшь ответа.
+  Не получила — это стоп и вопрос, а не повод идти дальше без него.
+· Твоя работа (author / designer / artist / editor) — делаешь названными инструментами.
+· Критик — не отдельное лицо и не помощник, а ТВОЙ второй проход по уже готовому.
+  Мера — лист ожиданий, написанный ДО работы, а не «перечитала, нормально»: помня
+  замысел, ты дочитываешь в материал то, чего в нём нет. Взвешиваешь: что критично,
+  что второстепенно, чем можно пренебречь — и это выносишь Директору на гейте.
+
+${lines.join('\n')}${cross}`;
+}
+
+/** Спеки инструментов — интроспекцией каталога run/ (паттерн tools-registry). */
+async function collectToolSpecs(): Promise<ToolSpec[]> {
+  process.env.SS_TOOLS_INTROSPECT = '1';
+  const specs: ToolSpec[] = [];
+  for (const f of readdirSync(RUN_DIR).sort()) {
+    if (!f.endsWith('.ts') || f.startsWith('_')) continue;
+    const mod = (await import(pathToFileURL(join(RUN_DIR, f)).href)) as { default?: ToolSpec };
+    if (mod.default?.name) specs.push(mod.default);
+  }
+  return specs;
+}
 
 /**
  * Манифесты скиллов для карты маршрута — читаются напрямую из каталога, без
@@ -70,17 +231,13 @@ function readSkillManifests(): Array<{ slug: string; summary: string; agents?: r
   return out;
 }
 
-/** Тело роли — детерминированная чистая сборка. */
-export function buildPolinaRole(): string {
+/** Тело роли — детерминированная сборка (async из-за интроспекции инструментов). */
+export async function buildPolinaRole(): Promise<string> {
   const doctrine = loadDoctrine();
   const route = buildRouteBlock({
-    doctrine,
-    tools: mindToolSpecs().map((t) => ({ name: t.name, stations: t.stations })),
+    tools: (await collectToolSpecs()).map((t) => ({ name: t.name, stations: t.stations })),
     skills: readSkillManifests(),
-  })
-    // В харнесе тело скилла читается нативно (Skill tool), getSkill — умерший
-    // чат-тул старого роута; текст станции переводится на язык харнеса.
-    .replaceAll('скиллы (тело — getSkill):', 'скиллы (грузи Skill tool\'ом):');
+  });
 
   return `# Полина — единый ум студии SandyStudio
 <!-- ФАЙЛ СГЕНЕРИРОВАН scripts/gen-role-polina.ts — правь реестры и генератор, не файл. -->
@@ -159,9 +316,9 @@ ${route}
 `;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const write = process.argv.includes('--write');
-  const next = buildPolinaRole();
+  const next = await buildPolinaRole();
   const current = existsSync(ROLE_PATH) ? readFileSync(ROLE_PATH, 'utf-8') : null;
   if (write) {
     writeFileSync(ROLE_PATH, next, 'utf-8');
@@ -177,4 +334,4 @@ function main(): void {
 }
 
 // main — только при прямом запуске: под vitest модуль импортируется ради buildPolinaRole.
-if (process.argv[1]?.replace(/\\/g, '/').includes('gen-role-polina')) main();
+if (process.argv[1]?.replace(/\\/g, '/').includes('gen-role-polina')) void main();

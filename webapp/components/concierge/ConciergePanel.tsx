@@ -81,7 +81,9 @@ const MIND_CHAT = process.env.NEXT_PUBLIC_MIND_CHAT === '1';
 // строку (/api/mind/turn), мост ведёт headless-сессию, ответ приходит
 // Realtime'ом. Флаг отдельный от MIND_CHAT ради отката: снять переменную —
 // панель вернётся на старый стриминговый роут.
-const MIND_BRIDGE = MIND_CHAT && process.env.NEXT_PUBLIC_MIND_BRIDGE === '1';
+// Ф6: старый /api/mind/chat СНЕСЁН — mind-режим ходит только мостом; env-флаг
+// отката больше не имеет смысла (откат = git revert).
+const MIND_BRIDGE = MIND_CHAT;
 const CHAT_ENDPOINT = MIND_CHAT ? '/api/mind/chat' : '/api/concierge/chat';
 const threadKeyFor = (episodeId: string | null): string =>
   MIND_CHAT ? `sandystudio.mind.threadId.${episodeId ?? 'studio'}` : THREAD_KEY;

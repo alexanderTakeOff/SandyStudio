@@ -10,13 +10,13 @@ import { resolve } from 'node:path';
 import { buildPolinaRole } from '../../scripts/gen-role-polina';
 
 describe('gen-role-polina', () => {
-  it('roles/polina.md совпадает с выводом из реестров (иначе: npx tsx scripts/gen-role-polina.ts --write)', () => {
+  it('roles/polina.md совпадает с выводом из реестров (иначе: npx tsx scripts/gen-role-polina.ts --write)', async () => {
     const committed = readFileSync(resolve(process.cwd(), 'roles', 'polina.md'), 'utf-8');
-    expect(committed).toBe(buildPolinaRole());
+    expect(committed).toBe(await buildPolinaRole());
   });
 
-  it('роль несёт обязательные блоки харнеса', () => {
-    const role = buildPolinaRole();
+  it('роль несёт обязательные блоки харнеса', async () => {
+    const role = await buildPolinaRole();
     // Станция самосверки — решение Директора 09.08: кадр не предъявляется без
     // вердикта сверки с плитами канона.
     expect(role).toContain('САМОСВЕРКА КАДРА');

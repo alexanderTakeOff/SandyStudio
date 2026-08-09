@@ -64,10 +64,10 @@ webapp студии, твои реплики он видит в треде эп�
       инструменты: register-canon
   · Brief [brief] — ВХОД ДИРЕКТОРА — просишь и ЖДЁШЬ, сама не делаешь
       слушаешь Директора → предлагаешь ВАРИАНТЫ → он выбирает
-      инструменты: write-asset
+      инструменты: theme-propose · write-asset
   · Casting [casting] — ВХОД ДИРЕКТОРА — просишь и ЖДЁШЬ, сама не делаешь
       предлагаешь ВАРИАНТЫ каста из канона серии → он выбирает
-      инструменты: write-asset
+      инструменты: cast-episode · write-asset
   · Writer [screenwriter] — твоя линза: author
       инструменты: write-asset
       скиллы (грузи Skill tool'ом): episode-local-antagonist-engine [жанр: comedy] · sandy-gag-library [жанр: comedy]
@@ -129,7 +129,7 @@ webapp студии, твои реплики он видит в треде эп�
       инструменты: check-video
       скиллы (грузи Skill tool'ом): audience-quality-sensor · head-of-growth · shorts-longform-distribution
 
-Сквозные инструменты (нужны на любой станции): blind-brief · ensure-episode · set-status · show-asset · spend · sync-episode
+Сквозные инструменты (нужны на любой станции): blind-brief · ensure-episode · set-status · show-asset · show · spend · sync-episode
 
 [ИНСТРУМЕНТЫ — как звать]
 Инструменты студии — CLI в `scripts/run/`; запускаются ИЗ каталога `webapp/`:

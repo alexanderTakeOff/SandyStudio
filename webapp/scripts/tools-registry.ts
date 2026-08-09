@@ -23,8 +23,8 @@ import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { renderTool, type ToolSpec } from './run/_tool';
-import { MIND_CHAT_TOOLS } from '../lib/mind/chat-tools';
-import type { Tool } from '../lib/concierge/tools/types';
+
+
 
 const RUN_DIR = resolve(process.cwd(), 'scripts/run');
 const SNAPSHOT = resolve(process.cwd(), '../docs/TOOLS.md');
@@ -141,34 +141,10 @@ function undeclared(e: Entry): string[] {
 // пересказ. Гейт честности таблиц на них не распространяется: reads/writes не
 // декларированы, и это сказано в шапке раздела явно, а не умолчано.
 
-const CHAT_SECTION_HEADER = `## Тулы ума (chat) — выжившие из старого диспетчера
-
-> Живут в \`lib/concierge/tools/*\` до Ф6; при сносе переезжают и портируются на
-> \`defineTool\`-самоописание. \`reads\`/\`writes\` у них не декларированы — гейт
-> честности таблиц на этот раздел НЕ распространяется. Кил-лист (30 умерших) и
-> основания отбора — \`lib/mind/chat-tools.ts\`.
-
-`;
-
-type ChatTool = Tool<Record<string, unknown>>;
-
-function renderChatTool(t: ChatTool): string {
-  const params = t.schema.function.parameters;
-  const required = new Set(params.required ?? []);
-  const lines: string[] = [`### ${t.name}`, '', t.description, ''];
-  const names = Object.keys(params.properties);
-  if (names.length > 0) {
-    lines.push('| аргумент | обязателен | допустимо | что это |', '|---|---|---|---|');
-    for (const n of names) {
-      const p = params.properties[n] as { description?: string; enum?: unknown[] };
-      const values = p.enum ? p.enum.map((v) => `\`${String(v)}\``).join(' · ') : '—';
-      lines.push(`| \`${n}\` | ${required.has(n) ? 'да' : '—'} | ${values} | ${p.description ?? ''} |`);
-    }
-    lines.push('');
-  }
-  lines.push(`**меняет состояние:** ${t.mutating ? 'да' : 'нет'}`, '');
-  return lines.join('\n');
-}
+// Ф6 (09.08): раздел «тулы ума (chat)» умер вместе с lib/mind/chat-tools —
+// в харнесе у Полины нет function-calling слоя, только CLI run/* (+ Read/Bash
+// нативно). Замены: show / cast-episode / theme-propose — обычные defineTool
+// и рендерятся общим путём.
 
 function render(entries: readonly Entry[]): string {
   const rows = entries
@@ -176,13 +152,7 @@ function render(entries: readonly Entry[]): string {
     .join('\n');
   const body = entries.map((e) => renderTool(e.spec)).join('\n\n---\n\n');
 
-  const chatRows = MIND_CHAT_TOOLS.map((t) => `| [\`${t.name}\`](#${t.name.toLowerCase()}) | ${t.mutating ? '✎' : '👁'} |`).join('\n');
-  const chatBody = MIND_CHAT_TOOLS.map((t) => renderChatTool(t)).join('\n---\n\n');
-
-  return (
-    `${HEADER}| инструмент | что делает |\n|---|---|\n${rows}\n\n---\n\n${body}\n\n` +
-    `${CHAT_SECTION_HEADER}| тул | ✎/👁 |\n|---|---|\n${chatRows}\n\n---\n\n${chatBody}`
-  );
+  return `${HEADER}| инструмент | что делает |\n|---|---|\n${rows}\n\n---\n\n${body}\n`;
 }
 
 async function main() {
