@@ -140,7 +140,7 @@ const PHASE_CONDITION: Readonly<Record<string, string>> = {
  * Главное, что карта обязана донести: часть станций — ВХОД ДИРЕКТОРА, а не
  * работа ума. Кастинг не «пропущен» — ум не знал, что его надо ЗАПРОСИТЬ.
  */
-function buildRouteBlock(ctx: MindPromptContext): string {
+export function buildRouteBlock(ctx: MindPromptContext): string {
   // Станция → инструменты. Выводится из САМИХ инструментов (`ToolSpec.stations`),
   // поэтому список не может устареть, пока инструмент жив. Пустой `stations`
   // означает «сквозной» — такие перечисляются один раз внизу, а не у каждой станции.

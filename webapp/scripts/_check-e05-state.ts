@@ -43,7 +43,7 @@ async function main() {
     const txt = stb.content ?? '';
     const hits = txt.match(/duration[_ ]?(seconds|сек)?[^\n]{0,40}/gi) ?? [];
     console.log(`\nраскадровка ${stb.filename}: упоминаний длительности ${hits.length}`);
-    hits.slice(0, 8).forEach((h) => console.log('   ', h.trim()));
+    hits.slice(0, 8).forEach((h: string) => console.log('   ', h.trim()));
     const meta = (stb.metadata ?? {}) as Record<string, unknown>;
     console.log('   metadata keys:', Object.keys(meta).join(', ') || '—');
   }
