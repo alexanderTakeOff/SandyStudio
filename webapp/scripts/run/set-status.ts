@@ -17,6 +17,7 @@ import { defineTool } from './_tool';
 import { sb } from './_env';
 import { demoteSiblingApproved, resolveSlotDescriptor } from '../../lib/api/single-approved';
 import { assertStoryboardApprovable } from '../../lib/api/animatic-shotlist';
+import { assertCastApprovable } from '../../lib/agents/episode-cast';
 
 const SETTABLE = ['DRAFT', 'REVIEW', 'REVISION', 'APPROVED', 'INVALIDATED', 'NEEDS_HUMAN_TWEAK'] as const;
 
@@ -55,6 +56,7 @@ export default defineTool(
     // D76: тот же гейт, что в persistAsset — set-status не трогает content, но
     // может быть ЕДИНСТВЕННЫМ шагом, который переводит STB в APPROVED/LOCKED.
     assertStoryboardApprovable(asset.file_type, status, asset.content, asset.filename);
+    assertCastApprovable(asset.file_type, status, asset.content, asset.metadata);
 
     // Повышение до утверждённого вытесняет прежнего в том же слоте — тем же кодом, что и
     // маршрут аппрува, чтобы инвариант имел ОДИН источник, а не два расходящихся.

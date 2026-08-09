@@ -86,6 +86,42 @@ export function parseCastSlugs(
 }
 
 /**
+ * Гейт перехода `SPC-episode_cast` → REVIEW/APPROVED/LOCKED (2026-08-09).
+ *
+ * `parseCastSlugs` выше — ЕДИНСТВЕННЫЙ читатель каста: по нему `loadEpisodeCast`
+ * решает, чем скоупить эпизод. Не распознал ничего — эпизод молча идёт на ВСЁМ
+ * каноне серии (`loadEpisodeCast` вернёт null, и загрузчики честно откатятся к
+ * старому поведению). Молча — вот в чём беда: каст лежит, выглядит проведённым,
+ * а работает так, будто его нет.
+ *
+ * Живой случай SS-S20-E04: ум написал каст красивой markdown-таблицей с настоящим
+ * рассуждением (какой канон цеплять до кадра-поворота, какой после), но ни
+ * `metadata.cast`, ни fenced json там не было — у неё отняли `castEpisode`, а
+ * `write-asset` принимает любой текст и о форме не знает. Отказ на границе — то же
+ * лекарство, что D76/D84 для раскадровки: студия сама не пускает изделие, которое
+ * не сможет прочитать, и называет, чего не хватает.
+ *
+ * DRAFT не гейтится: черновик волен быть прозой, пока его пишут.
+ */
+export function assertCastApprovable(
+  fileType: string,
+  status: string | null | undefined,
+  content: string | null | undefined,
+  metadata: unknown,
+): void {
+  if (fileType !== EPISODE_CAST_FILE_TYPE) return;
+  if (status !== 'REVIEW' && status !== 'APPROVED' && status !== 'LOCKED') return;
+  if (parseCastSlugs(content, metadata).length > 0) return;
+  throw new Error(
+    `${fileType}: нельзя перевести в ${status} без машиночитаемого списка канона. ` +
+      'Скоуп эпизода читается ТОЛЬКО из `metadata.cast` или fenced ```json блока ' +
+      '{"cast":["character_bathyscaphe_turnaround","style_s20_style_canon_v1"]} — ' +
+      'таблица в тексте машине не видна, и эпизод молча пойдёт на ВСЁМ каноне серии. ' +
+      'Штатный путь — инструмент castEpisode: он ставит форму и проверяет, что канон существует.',
+  );
+}
+
+/**
  * Load the locked-or-approved cast slug set for an episode.
  *
  * Returns a lowercase `Set` of Bible slugs, or `null` when the episode has no

@@ -390,6 +390,7 @@ npx tsx scripts/run/write-asset.ts --type <type> --file <file> [--status <status
 | [`enrichBible`](#enrichbible) | ✎ |
 | [`setBibleContent`](#setbiblecontent) | ✎ |
 | [`createSeries`](#createseries) | ✎ |
+| [`castEpisode`](#castepisode) | ✎ |
 | [`listSkills`](#listskills) | 👁 |
 | [`getSkill`](#getskill) | 👁 |
 | [`proposeSkill`](#proposeskill) | ✎ |
@@ -519,6 +520,20 @@ Create a brand-new series (SS-S15, SS-S16, etc) in DRAFT status. Seeds the defau
 | `genre` | — | `comedy` · `drama` · `doc` · `sci_fi` · `other` |  |
 | `logline` | — | — |  |
 | `episode_budget_ceiling` | — | — |  |
+
+**меняет состояние:** да
+
+---
+
+### castEpisode
+
+Draft the episode cast gallery (ART-AD Casting stage): the subset of the series Library — characters, locations, objects by canon slug — that appears in THIS episode. Anything not cast is scoped OUT of every downstream stage (kills the anvil/vanity-style bleed). The route runs a canon-existence HARD GATE: every slug must already have LOCKED canon, else it returns the missing list (create it in the Library or drop it). Creates it in REVIEW so the Director's Approve button appears on the Casting stage — the Director then ratifies via approveAsset. Use when the Director dictates the cast list for an episode. Casting runs AFTER the Brief is approved and BEFORE the Writer (Brief -> Casting -> Writer): once the brief is set you know which characters/objects the episode needs, and approving the cast is what releases the Writer. This is YOUR step - use castEpisode, NOT triggerAgent('ART-AD') (ART-AD has no executor and is rejected). Verbal approval required.
+
+| аргумент | обязателен | допустимо | что это |
+|---|---|---|---|
+| `cast` | да | — | Canon members cast into the episode. Each item is a Bible slug (character/location/object) with an optional role note. |
+| `episodeId` | — | — | Episode UUID. Omit to use the active conversation episode. |
+| `note` | — | — | Short audit note — paraphrase the Director's casting intent. |
 
 **меняет состояние:** да
 

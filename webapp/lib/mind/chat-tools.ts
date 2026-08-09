@@ -8,7 +8,8 @@
 //
 // ── КИЛ-ЛИСТ (30) ────────────────────────────────────────────────────────────
 // Диспетчерские (заказ работы ролям / машинерия старого конвейера):
-//   triggerAgent · fanoutShots · reconcileEpisode · castEpisode · getStateMatrix
+//   triggerAgent · fanoutShots · reconcileEpisode · getStateMatrix
+//   (castEpisode был здесь и ВОЗВРАЩЁН 09.08 — см. причину у самого инструмента)
 //   getNextGate · listPendingApprovals · markAwaitingDirector
 // Плановый конвейер (план-ассеты малых агентов и их перегенерация):
 //   getRefPlan · listRefPlans · getCriticVerdict · getShotPlan · listShotPlans
@@ -38,6 +39,7 @@ import {
   setBibleContent,
   createSeries,
 } from '../concierge/tools/series';
+import { castEpisode } from '../concierge/tools/cast';
 import { listSkills, getSkill, proposeSkill, updateSkill, approveSkill } from '../concierge/tools/skills';
 import { listThemes, proposeTheme } from '../concierge/tools/themes';
 import { getWorkPlan, updateWorkPlan } from '../concierge/tools/work-plan';
@@ -58,6 +60,17 @@ export const MIND_CHAT_TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   enrichBible as unknown as AnyTool,
   setBibleContent as unknown as AnyTool,
   createSeries as unknown as AnyTool,
+  // ВОЗВРАЩЁН 2026-08-09. Срезан был как «диспетчерский» — по соседству с
+  // triggerAgent/fanoutShots, за компанию по названию. Но работу роли он не
+  // заказывает: он держит КОНТРАКТ изделия — `SPC-episode_cast` в статусе REVIEW,
+  // машиночитаемые слаги, преflight «канон существует и LOCKED». Убрали инструмент
+  // — исчезла форма, а взамен остался `write-asset`, принимающий любой текст.
+  // Полина честно написала каст красивой markdown-таблицей: человеку понятно,
+  // машине НЕ ВИДНО вовсе (`parseCastSlugs` читает только `metadata.cast` или
+  // fenced json), статус DRAFT невидим очереди приёмки, эпизод молча пошёл на всём
+  // каноне серии. Урок шире кастинга: инструмент несёт не только действие, но и
+  // контракт изделия — срезая его, назови, кто теперь держит контракт.
+  castEpisode as unknown as AnyTool,
   // Ось знаний
   listSkills as unknown as AnyTool,
   getSkill as unknown as AnyTool,

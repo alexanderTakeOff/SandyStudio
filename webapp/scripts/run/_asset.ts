@@ -19,6 +19,7 @@ import { sb } from './_env';
 import { localCacheAbsPath } from '../../lib/media-cache';
 import { bumpPreviewFreshness } from '../../lib/asset-preview-resolver';
 import { assertStoryboardApprovable } from '../../lib/api/animatic-shotlist';
+import { assertCastApprovable } from '../../lib/agents/episode-cast';
 
 export interface PersistAssetArgs {
   /**
@@ -112,6 +113,12 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
       (patch.content as string | undefined) ?? existing.content,
       filename,
     );
+    assertCastApprovable(
+      a.fileType,
+      (patch.status as string | undefined) ?? existing.status,
+      (patch.content as string | undefined) ?? existing.content,
+      patch.metadata,
+    );
 
     const { error } = await sb.from('assets').update(patch).eq('id', existing.id);
     if (error) throw new Error(`asset update failed: ${error.message}`);
@@ -150,6 +157,7 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
   // D76: same gate as the update branch — a NEW STB row can be born straight
   // into APPROVED (persistAsset defaults status to APPROVED when unset).
   assertStoryboardApprovable(a.fileType, insertStatus, insertContent, filename);
+  assertCastApprovable(a.fileType, insertStatus, insertContent, a.metadata ?? {});
 
   const { data, error } = await sb
     .from('assets')
