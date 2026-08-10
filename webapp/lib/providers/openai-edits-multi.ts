@@ -38,16 +38,21 @@ const MAX_REFS = 16;
 // Cost ladder mirrors openai-image-edit.ts (same model, same render cost).
 // Multi-ref edits price the same as single-ref edits — OpenAI charges per
 // generation, not per reference image fed in.
+// `1024x1792` тарифицируется по ближайшей вертикали (1024×1536) с надбавкой
+// 1.17 по отношению площадей — оценка, а не прайс-лист: точной публичной
+// ставки на этот размер нет. Оценка ЗАВЫШАЮЩАЯ, чтобы гейт бюджета не
+// пропустил трату, которой не ждал.
 const COST_TABLE: Record<GptImageQuality, Record<string, number>> = {
-  low:    { '1024x1024': 0.013, '1024x1536': 0.018, '1536x1024': 0.018, auto: 0.018 },
-  medium: { '1024x1024': 0.053, '1024x1536': 0.080, '1536x1024': 0.080, auto: 0.080 },
-  high:   { '1024x1024': 0.211, '1024x1536': 0.317, '1536x1024': 0.317, auto: 0.317 },
-  auto:   { '1024x1024': 0.053, '1024x1536': 0.080, '1536x1024': 0.080, auto: 0.080 },
+  low:    { '1024x1024': 0.013, '1024x1536': 0.018, '1024x1792': 0.021, '1536x1024': 0.018, auto: 0.018 },
+  medium: { '1024x1024': 0.053, '1024x1536': 0.080, '1024x1792': 0.094, '1536x1024': 0.080, auto: 0.080 },
+  high:   { '1024x1024': 0.211, '1024x1536': 0.317, '1024x1792': 0.371, '1536x1024': 0.317, auto: 0.317 },
+  auto:   { '1024x1024': 0.053, '1024x1536': 0.080, '1024x1792': 0.094, '1536x1024': 0.080, auto: 0.080 },
 };
 
 function dimensionsFor(size: GptImageSize): { width: number; height: number } {
   if (size === '1024x1024') return { width: 1024, height: 1024 };
   if (size === '1024x1536') return { width: 1024, height: 1536 };
+  if (size === '1024x1792') return { width: 1024, height: 1792 };
   if (size === '1536x1024') return { width: 1536, height: 1024 };
   return { width: 1024, height: 1024 };
 }
@@ -59,7 +64,14 @@ function dimensionsFor(size: GptImageSize): { width: number; height: number } {
  * handles 4K delivery.
  */
 function clampSize(size: MultiImageGenInput['size']): GptImageSize {
-  if (size === '1024x1024' || size === '1024x1536' || size === '1536x1024') return size;
+  if (
+    size === '1024x1024' ||
+    size === '1024x1536' ||
+    size === '1024x1792' ||
+    size === '1536x1024'
+  ) {
+    return size;
+  }
   return '1024x1024';
 }
 

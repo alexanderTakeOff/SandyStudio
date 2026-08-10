@@ -18,7 +18,18 @@
 
 import { fetchWithTimeout, FETCH_TIMEOUTS } from './fetch-with-timeout';
 
-export type GptImageSize = '1024x1024' | '1024x1536' | '1536x1024' | 'auto';
+// `1024x1792` добавлен 2026-08-10 (E06). Три прежних размера — наследие
+// gpt-image-1; на gpt-image-2 размер свободный (ребро ≤3840, кратно 16,
+// соотношение ≤3:1, пиксели 655 360…8 294 400), и 1024×1792 в эти границы
+// входит. Без него вертикальный эпизод снимался в 2:3 и терял ~16% ширины
+// при кропе до 9:16 на видео-станции — тот самый дефект, от которого
+// предостерегает скилл eref-designer.
+export type GptImageSize =
+  | '1024x1024'
+  | '1024x1536'
+  | '1024x1792'
+  | '1536x1024'
+  | 'auto';
 export type GptImageQuality = 'low' | 'medium' | 'high' | 'auto';
 
 export interface OpenAIImageInput {
