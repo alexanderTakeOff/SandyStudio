@@ -9,7 +9,7 @@ import { use, useState, useEffect, useRef, type KeyboardEvent, type MouseEvent a
 import { createPortal } from 'react-dom';
 import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
-import { RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Trash2, CheckCircle2, ChevronDown, ChevronRight, Power } from 'lucide-react';
+import { RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Trash2, CheckCircle2, ChevronDown, ChevronRight, Power, BookOpen } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { splitLedger, type LedgerRow } from '@/lib/budget-split';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
@@ -422,21 +422,28 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
         createPortal(
           <>
             <div className="flex items-baseline gap-3 min-w-0 flex-1">
+              {/* Только номер эпизода (Директор, 10.08): префикс SS-S20- дублирует
+                  переключатель сериала слева, а место в шапке дорогое. Кегль поднят —
+                  это заголовок страницы, а не подпись. */}
               <span
-                className="text-sm font-semibold shrink-0"
+                className="text-base font-semibold shrink-0"
                 style={{
                   color:
                     episode.status === 'ARCHIVED'
                       ? 'var(--accent-warning)'
                       : 'var(--text-primary)',
                 }}
-                title={episode.status === 'ARCHIVED' ? 'Archived (in Trash)' : undefined}
+                title={
+                  episode.status === 'ARCHIVED'
+                    ? `Archived (in Trash) · ${episode.episode_code}`
+                    : episode.episode_code
+                }
               >
-                {episode.episode_code}
+                {episode.episode_code.replace(/^SS-S\d+-/, '')}
               </span>
               {episode.title_working && (
                 <span
-                  className="text-sm font-normal truncate"
+                  className="text-base font-normal truncate"
                   style={{
                     color:
                       episode.status === 'ARCHIVED'
@@ -454,6 +461,17 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                 ${(directSpent ?? episode.budget_spent ?? 0).toFixed(2)} / $
                 {(episode.budget_ceiling ?? 0).toFixed(2)}
               </span>
+              {/* Прямая дверь в библиотеку ЭТОГО сериала (Директор, 10.08): раньше
+                  туда шли через список сериалов — длинный обходной путь к тому, что
+                  открывают по десять раз за эпизод. */}
+              <a
+                href={`/series/${episode.series_id}?tab=bible`}
+                className="text-xs whitespace-nowrap shrink-0 inline-flex items-center gap-1 px-2 h-6 rounded-md border border-glass text-text-secondary hover:text-text-primary hover:border-[var(--accent-primary)] transition-colors"
+                title="Библиотека канона этого сериала"
+              >
+                <BookOpen size={12} />
+                Библиотека
+              </a>
             </div>
             <DropdownMenu
               ariaLabel="Episode actions"

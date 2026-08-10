@@ -51,7 +51,9 @@ export function WorkspaceScopeSwitcher() {
       <select
         value={seriesId ?? ''}
         onChange={(e) => setSeriesId(e.target.value || null)}
-        className="h-8 px-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-xs text-text-primary focus:outline-none focus:border-[var(--accent-primary)] max-w-[240px]"
+        // Кегль поднят с xs до sm (Директор, 10.08: «мелко смотрятся»): это
+        // переключатель сериала — верхний уровень навигации, а не подпись.
+        className="h-9 px-2.5 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)] max-w-[280px]"
         title="Workspace scope — какой сериал показывают Episodes/Budget/Audience/Inbox/Jobs/Activity"
       >
         <option value="">Вся студия</option>
