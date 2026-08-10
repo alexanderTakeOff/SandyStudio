@@ -10,9 +10,34 @@
 import { sb } from './run/_env';
 import { assertEpisodeReadyToSpend } from './run/_asset';
 
-async function spentUsd(episodeId: string): Promise<number> {
-  const { data } = await sb.from('budget_log').select('cost_usd').eq('episode_id', episodeId);
-  return (data ?? []).reduce((s, r) => s + (Number(r.cost_usd) || 0), 0);
+/**
+ * Деньги эпизода — ДВЕ РАЗНЫЕ ВЕЛИЧИНЫ (Директор, 10.08).
+ *
+ * ПРЯМЫЕ — счета провайдеров: fal (видео), openai (кадры), anthropic по API
+ * (агенты конвейера, в том числе те, кого Полина позвала через Agent/Task).
+ * Их и ограничивает потолок эпизода.
+ *
+ * КОСВЕННЫЕ — ходы самой Полины: мост помечает их тиром «subscription-estimate»,
+ * это оценка по прайсу API для сравнения нагрузки. С подписки эти доллары НЕ
+ * списываются. До этой правки они лежали в одной куче с прямыми, и E06 подошёл
+ * к потолку $70 с суммой $61.62, из которых реальными были ~$19: фиктивные
+ * деньги остановили бы настоящее производство.
+ */
+const SUBSCRIPTION_TIER_MARK = 'subscription-estimate';
+
+async function spentUsd(episodeId: string): Promise<{ direct: number; indirect: number }> {
+  const { data } = await sb
+    .from('budget_log')
+    .select('cost_usd,model_or_tier')
+    .eq('episode_id', episodeId);
+  let direct = 0;
+  let indirect = 0;
+  for (const r of (data ?? []) as Array<{ cost_usd: number | null; model_or_tier: string | null }>) {
+    const usd = Number(r.cost_usd) || 0;
+    if (String(r.model_or_tier ?? '').includes(SUBSCRIPTION_TIER_MARK)) indirect += usd;
+    else direct += usd;
+  }
+  return { direct, indirect };
 }
 
 async function main(): Promise<void> {
@@ -42,23 +67,45 @@ async function main(): Promise<void> {
       console.error(String(e instanceof Error ? e.message : e));
       process.exit(2);
     }
-    const spent = await spentUsd(episodeId);
-    const ceiling = Number(ep.budget_ceiling ?? 0);
-    if (ceiling > 0 && spent >= ceiling) {
+    const { direct, indirect } = await spentUsd(episodeId);
+
+    // ЛИЧНЫЙ ЛИМИТ ПОЛИНЫ (Директор, 10.08). Он был выставлен ($10) и не
+    // останавливал НИЧЕГО: гейт смотрел только на потолок эпизода, а сам лимит
+    // существовал как число в метаданных, о котором она лишь помнила. Помнить —
+    // не механизм. Считаем по ПРЯМЫМ тратам (кадры, клипы, агенты по API),
+    // потому что именно их она инициирует и именно они стоят денег.
+    const personalCap = Number(
+      (ep.metadata as Record<string, unknown> | null)?.concierge_cap_usd ?? 0,
+    );
+    if (personalCap > 0 && direct >= personalCap) {
       console.error(
-        `${ep.episode_code}: потолок исчерпан — потрачено $${spent.toFixed(2)} из $${ceiling.toFixed(2)}. ` +
+        `${ep.episode_code}: ТВОЙ ЛИМИТ исчерпан — прямых трат $${direct.toFixed(2)} из $${personalCap.toFixed(2)}. ` +
+          'Дальше тратить можно только с явного слова Директора (он поднимает лимит в Episode Settings). ' +
+          'Не обходи: попроси и жди.',
+      );
+      process.exit(2);
+    }
+
+    const ceiling = Number(ep.budget_ceiling ?? 0);
+    if (ceiling > 0 && direct >= ceiling) {
+      console.error(
+        `${ep.episode_code}: потолок исчерпан — ПРЯМЫХ трат $${direct.toFixed(2)} из $${ceiling.toFixed(2)}. ` +
           'Поднять потолок может только Директор (Episode Settings).',
       );
       process.exit(2);
     }
-    console.log(`gate ok · $${spent.toFixed(2)} из $${ceiling.toFixed(2)}`);
+    console.log(
+      `gate ok · прямые $${direct.toFixed(2)} из $${ceiling.toFixed(2)}` +
+        (personalCap > 0 ? ` · твой лимит $${direct.toFixed(2)}/$${personalCap.toFixed(2)}` : '') +
+        ` · подписка (косвенно, деньгами не списывается) $${indirect.toFixed(2)}`,
+    );
     return;
   }
 
   if (kind === 'context') {
     // Динамика для UserPromptSubmit — замена dynamic-части старого prompt.ts:
     // состояние СВЕЖЕЕ на каждый ход, а не на момент резюма сессии.
-    const spent = await spentUsd(episodeId);
+    const { direct, indirect } = await spentUsd(episodeId);
     const ceiling = ep.budget_ceiling === null ? null : Number(ep.budget_ceiling);
     const { data: assets } = await sb
       .from('assets')
@@ -74,8 +121,14 @@ async function main(): Promise<void> {
     console.log(`${ep.episode_code} · статус ${ep.status}`);
     console.log(
       ceiling === null
-        ? `деньги: потрачено $${spent.toFixed(2)}, потолок НЕ ЗАДАН — до первой траты получи его у Директора`
-        : `деньги: $${spent.toFixed(2)} из $${ceiling.toFixed(2)} (журнал budget_log — истина)`,
+        ? `деньги: ПРЯМЫХ трат $${direct.toFixed(2)}, потолок НЕ ЗАДАН — до первой траты получи его у Директора`
+        : `деньги: ПРЯМЫЕ $${direct.toFixed(2)} из $${ceiling.toFixed(2)} — только они упираются в потолок (журнал budget_log — истина)`,
+    );
+    // Косвенные показываем ОТДЕЛЬНОЙ строкой и никогда не складываем с прямыми:
+    // это нагрузка на подписку, а не счёт. Собственные ходы Полины — сюда;
+    // агент, которого она позвала через Agent/Task, идёт по API и попадает в ПРЯМЫЕ.
+    console.log(
+      `подписка (косвенно, деньгами не списывается): $${indirect.toFixed(2)} — твои ходы; в потолок НЕ входят`,
     );
     console.log(`изделия: ${counts || 'нет'}`);
     return;

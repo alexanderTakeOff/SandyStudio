@@ -179,7 +179,10 @@ export default defineTool(
         kind: 'clip',
         file: out,
         shot,
-        description: `клип ${shot} · ${res.model_id}/${tier} · $${res.cost_usd.toFixed(2)}`,
+        // Длительность стоит РЯДОМ с ценой (Директор, 10.08): Seedance берёт
+        // посекундно, поэтому «$1.69» без секунд не говорит, дорого это или нет,
+        // а «6.0с» сразу даёт цену секунды и объясняет разницу между клипами.
+        description: `клип ${shot} · ${res.duration_seconds}с · ${res.model_id}/${tier} · $${res.cost_usd.toFixed(2)}`,
         origin: 'gen-video',
         // R22/D101: промпт и параметры клипа — часть изделия; регистратор кладёт
         // их плоскими полями по эталону exec-vgen.
