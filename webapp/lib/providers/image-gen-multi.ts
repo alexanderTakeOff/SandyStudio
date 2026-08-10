@@ -61,7 +61,17 @@ export interface MultiImageGenInput {
    * Output size hint. EREF default `1024x1024`. 4K is delivered by the
    * separate upscale provider (Phase E.5), not by the gen provider.
    */
-  size?: '1024x1024' | '1024x1536' | '1536x1024' | '2048x2048' | '2752x1536' | '1536x2752';
+  size?:
+    | '1024x1024'
+    | '1024x1536'
+    // 1024x1792 — истинная вертикаль 9:16 для шортс-эпизодов (добавлена
+    // 2026-08-10, E06). Провайдеры, которые её не умеют, схлопывают размер
+    // своим clampSize, как и любой другой неподдержанный.
+    | '1024x1792'
+    | '1536x1024'
+    | '2048x2048'
+    | '2752x1536'
+    | '1536x2752';
   quality?: 'low' | 'medium' | 'high';
   /**
    * Negative constraints from the Plan (`negative[]`). Things that must NOT
