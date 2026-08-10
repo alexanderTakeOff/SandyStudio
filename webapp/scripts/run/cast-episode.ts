@@ -41,7 +41,14 @@ export default defineTool(
         'content-type': 'application/json',
         ...(token ? { authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ cast: slugs, notes: arg('notes') || undefined }),
+      // Форма ровно та, которую объявляет роут: `cast: [{slug}]` и `note`.
+      // До 2026-08-10 здесь уходили голые строки и поле `notes` — роут отвечал
+      // 400 «Expected object, received string», и станция кастинга не работала
+      // вообще. Контракт держит роут; инструмент под него подстраивается.
+      body: JSON.stringify({
+        cast: slugs.map((slug) => ({ slug })),
+        note: arg('notes') || undefined,
+      }),
     });
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {
