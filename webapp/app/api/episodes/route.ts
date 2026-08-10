@@ -12,10 +12,9 @@ import { ConflictError, ValidationError, NotFoundError } from '@/lib/api/errors'
 import type { SeriesRow } from '@/lib/supabase/types-phase5b';
 import {
   buildBriefTemplate,
-  generateBriefMarkdown,
   type BriefInput,
-} from '@/lib/providers/anthropic-brief';
-import { episodeBudgetDefaultUsd, recordCost } from '@/lib/budget';
+} from '@/lib/brief-template';
+import { episodeBudgetDefaultUsd } from '@/lib/budget';
 import { conciergeBudgetCapConfig } from '@/lib/concierge/cost';
 import {
   promptRevisionCap,
@@ -193,62 +192,26 @@ export const POST = withApiHandler(async (req) => {
   }
   const briefAssetId = briefRow?.id ?? null;
 
-  // Sync Claude Haiku enrichment. ~3-5s. If it fails, template stays — episode
-  // is still usable. Director never sees an empty brief.
-  let briefSource: 'ai' | 'template' = 'template';
-  if (briefAssetId) {
-    try {
-      const aiBrief = await generateBriefMarkdown(briefInput);
-      const { error: updErr } = await supabase
-        .from('assets')
-        .update({ content: aiBrief.markdown } as never)
-        .eq('id', briefAssetId);
-      if (!updErr) briefSource = 'ai';
-      // 2026-07-25 — bill the brief enrichment to the episode it just created.
-      // The call is paid on every episode creation and used to be invisible to
-      // the Budget tab. Best-effort + enforceCeiling:false: the tokens are
-      // already spent, and a fresh episode has no meaningful ceiling headroom
-      // problem to protect against here.
-      if (aiBrief.costUsd > 0) {
-        try {
-          await recordCost(supabase, {
-            jobId: null,
-            episodeId: ep.id,
-            // EXEC-ORCH, not EXEC-CONC: this is a system enrichment fired by
-            // episode creation, and billing it to Polina would inflate her slice
-            // of the ledger with spend that is not hers.
-            agentId: 'EXEC-ORCH',
-            costUsd: aiBrief.costUsd,
-            apiProvider: 'anthropic',
-            modelOrTier: aiBrief.model,
-            operation: 'brief_enrichment',
-            tokensUsed: aiBrief.inputTokens + aiBrief.outputTokens,
-            enforceCeiling: false,
-          });
-        } catch {
-          /* accounting is best-effort — never fail episode creation over it */
-        }
-      }
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[episodes POST] Claude brief generation failed (kept template): ${(err as Error).message}`,
-      );
-    }
-  }
+  // Директор, 2026-08-10 (E06): между его текстом в модалке и брифом стоял
+  // Haiku 4.5 — он ПЕРЕЗАПИСЫВАЛ содержимое своим сочинением до того, как ум
+  // вообще открывал эпизод. У него на входе только premise: предыдущих эпизодов
+  // он не видит, поэтому «возьми из предыдущей версии Зрачка» превратилось в
+  // выдуманное психологическое откровение, а не в батискаф внутри радужки.
+  // Это ровно тот маленький агент, которого доктрина исключает как класс (§7).
+  // Убран: шаблон кладёт слова Директора ДОСЛОВНО, бриф пишет ум по ним.
 
   await supabase.from('activity_events').insert({
     event_type: 'episode_created',
     severity: 'info',
     title: `Episode ${fullEpisodeCode} created`,
-    description: `By ${user.email ?? user.id}; runtime ${body.target_runtime_seconds ?? 'unspecified'}s; brief=${briefSource}`,
+    description: `By ${user.email ?? user.id}; runtime ${body.target_runtime_seconds ?? 'unspecified'}s; brief=director`,
     actor: user.id,
     episode_id: ep.id,
     asset_id: briefAssetId,
     metadata: {
       series_id: series.id,
       target_runtime_seconds: body.target_runtime_seconds ?? null,
-      brief_source: briefSource,
+      brief_source: 'director',
     },
   } as never);
 
