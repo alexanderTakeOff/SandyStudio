@@ -10,6 +10,8 @@ import { createPortal } from 'react-dom';
 import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
 import { RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Trash2, CheckCircle2, ChevronDown, ChevronRight, Power } from 'lucide-react';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { splitLedger, type LedgerRow } from '@/lib/budget-split';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -184,9 +186,31 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
   // top bar into this page's contextual header. Grab the slot node after mount;
   // it lives in the shell rendered above this page, so it exists by first effect.
   const [topbarSlot, setTopbarSlot] = useState<HTMLElement | null>(null);
+  // Деньги в шапке (2026-08-10). Показывали `episodes.budget_spent` — поле
+  // РЕЗЕРВАЦИЙ, которое почти никто не обновляет: на E06 оно застряло на $0.24,
+  // когда прямых трат было уже $21. Истина — `budget_log`, и считаем оттуда ровно
+  // так же, как гейт: ПРЯМЫЕ счета провайдеров, без подписочных оценок ходов ума
+  // (их тир помечен `subscription-estimate` и деньгами не является).
+  const [directSpent, setDirectSpent] = useState<number | null>(null);
   useEffect(() => {
     setTopbarSlot(document.getElementById('studio-topbar-slot'));
   }, []);
+
+  // Прямые траты для шапки — из budget_log, тем же правилом, что и гейт Полины.
+  useEffect(() => {
+    let cancelled = false;
+    const read = async () => {
+      try {
+        const sb = createSupabaseBrowserClient();
+        const { data } = await sb.from('budget_log').select('cost_usd,model_or_tier').eq('episode_id', id);
+        if (cancelled) return;
+        setDirectSpent(splitLedger((data ?? []) as LedgerRow[]).direct);
+      } catch { /* best-effort: молча падаем на старое поле budget_spent */ }
+    };
+    void read();
+    const t = setInterval(() => { void read(); }, 15_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [id]);
 
   // Resizable left-rail width (px), persisted. Mirrors ConciergePanel's resize
   // handle (no new dependency). Hydrated from localStorage in an effect so SSR
@@ -423,8 +447,12 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                   {episode.title_working}
                 </span>
               )}
-              <span className="text-xs text-text-muted whitespace-nowrap shrink-0">
-                ${(episode.budget_spent ?? 0).toFixed(2)} / ${(episode.budget_ceiling ?? 0).toFixed(2)}
+              <span
+                className="text-xs text-text-muted whitespace-nowrap shrink-0"
+                title="Прямые счета провайдеров (fal · openai · anthropic по API). Ходы ума на подписке сюда не входят — они деньгами не являются."
+              >
+                ${(directSpent ?? episode.budget_spent ?? 0).toFixed(2)} / $
+                {(episode.budget_ceiling ?? 0).toFixed(2)}
               </span>
             </div>
             <DropdownMenu

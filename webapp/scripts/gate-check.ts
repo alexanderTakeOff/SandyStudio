@@ -9,35 +9,16 @@
 // принимает эпизод аргументом, чтобы его нельзя было подменить из промпта.
 import { sb } from './run/_env';
 import { assertEpisodeReadyToSpend } from './run/_asset';
+import { splitLedger, type BudgetSplit, type LedgerRow } from '../lib/budget-split';
 
-/**
- * Деньги эпизода — ДВЕ РАЗНЫЕ ВЕЛИЧИНЫ (Директор, 10.08).
- *
- * ПРЯМЫЕ — счета провайдеров: fal (видео), openai (кадры), anthropic по API
- * (агенты конвейера, в том числе те, кого Полина позвала через Agent/Task).
- * Их и ограничивает потолок эпизода.
- *
- * КОСВЕННЫЕ — ходы самой Полины: мост помечает их тиром «subscription-estimate»,
- * это оценка по прайсу API для сравнения нагрузки. С подписки эти доллары НЕ
- * списываются. До этой правки они лежали в одной куче с прямыми, и E06 подошёл
- * к потолку $70 с суммой $61.62, из которых реальными были ~$19: фиктивные
- * деньги остановили бы настоящее производство.
- */
-const SUBSCRIPTION_TIER_MARK = 'subscription-estimate';
-
-async function spentUsd(episodeId: string): Promise<{ direct: number; indirect: number }> {
+// Деньги эпизода — ДВЕ РАЗНЫЕ ВЕЛИЧИНЫ; правило разделения общее с шапкой
+// эпизода, чтобы Директор и гейт не считали по-разному (см. lib/budget-split).
+async function spentUsd(episodeId: string): Promise<BudgetSplit> {
   const { data } = await sb
     .from('budget_log')
     .select('cost_usd,model_or_tier')
     .eq('episode_id', episodeId);
-  let direct = 0;
-  let indirect = 0;
-  for (const r of (data ?? []) as Array<{ cost_usd: number | null; model_or_tier: string | null }>) {
-    const usd = Number(r.cost_usd) || 0;
-    if (String(r.model_or_tier ?? '').includes(SUBSCRIPTION_TIER_MARK)) indirect += usd;
-    else direct += usd;
-  }
-  return { direct, indirect };
+  return splitLedger((data ?? []) as LedgerRow[]);
 }
 
 async function main(): Promise<void> {
