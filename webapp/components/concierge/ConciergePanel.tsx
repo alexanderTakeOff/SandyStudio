@@ -377,6 +377,14 @@ export function ConciergePanel() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
+  // D105 (2026-08-10) — ЕДИНСТВЕННАЯ правда о том, идёт ли ход Полины: замок
+  // `mind_session.busy`, который мост ставит на время хода. Локальный `streaming`
+  // на эту роль не годится дважды: он гаснет в `finally` сразу, как мост ПРИНЯЛ
+  // строку (а ход после этого идёт ещё минуты), и он вообще не загорается для
+  // ходов, разбуженных КНОПКОЙ (approval_granted) — а именно там Директор трижды
+  // за час спрашивал «она работает или встала?».
+  const [turnBusySince, setTurnBusySince] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [listening, setListening] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const [panelWidth, setPanelWidth] = useState<number>(420);
@@ -925,6 +933,33 @@ export function ConciergePanel() {
       if (timer) clearInterval(timer);
     };
   }, [threadId]);
+
+  // D105 — опрос замка хода. Читаем ту же базу тем же браузерным клиентом, что и
+  // остальной опрос панели: ни нового роута, ни правки моста — источник уже есть.
+  useEffect(() => {
+    if (!MIND_BRIDGE || !openEpisodeId) { setTurnBusySince(null); return; }
+    let cancelled = false;
+    const read = async () => {
+      try {
+        const sb = createSupabaseBrowserClient();
+        const { data } = await sb.from('episodes').select('metadata').eq('id', openEpisodeId).maybeSingle();
+        if (cancelled) return;
+        const meta = ((data as { metadata?: Record<string, unknown> } | null)?.metadata ?? {}) as Record<string, unknown>;
+        const mind = (meta.mind_session ?? {}) as { busy?: { started_at?: string } | null };
+        setTurnBusySince(mind.busy?.started_at ?? null);
+      } catch { /* опрос best-effort: молчащая плашка лучше молчащего экрана */ }
+    };
+    void read();
+    const timer = setInterval(() => { void read(); }, 4_000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [openEpisodeId]);
+
+  // Секундная стрелка для плашки — тикает только пока ход идёт.
+  useEffect(() => {
+    if (!turnBusySince) return;
+    const t = setInterval(() => setNowTick(Date.now()), 1_000);
+    return () => clearInterval(t);
+  }, [turnBusySince]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -1685,11 +1720,27 @@ export function ConciergePanel() {
               <span className="text-text-muted tabular-nums">{toolElapsedSec}s</span>
             </div>
           )}
+          {/* D105 — ход Полины идёт. Живёт от замка в базе, поэтому виден и для хода,
+              который разбудила КНОПКА, а не отправка из панели. Время — от старта хода,
+              чтобы «долго» отличалось от «висит». */}
+          {MIND_BRIDGE && turnBusySince && (
+            <div className="text-xs px-2 flex items-center gap-1.5 text-[var(--accent-primary)]">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent-primary)] animate-pulse" />
+              <span>Полина работает</span>
+              <span className="text-text-muted">·</span>
+              <span className="text-text-muted tabular-nums">
+                {(() => {
+                  const sec = Math.max(0, Math.round((nowTick - new Date(turnBusySince).getTime()) / 1000));
+                  return sec < 60 ? `${sec} с` : `${Math.floor(sec / 60)} мин ${sec % 60} с`;
+                })()}
+              </span>
+            </div>
+          )}
           {/* TD-20.A — Generic streaming hint when no tool plashka is active. */}
-          {streaming && !toolPlashka && (
+          {streaming && !toolPlashka && !turnBusySince && (
             <div className="text-xs text-text-muted px-2 italic flex items-center gap-1.5">
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--text-muted)] animate-pulse" />
-              Polina is thinking…
+              {MIND_BRIDGE ? 'принято, ждёт очереди…' : 'Polina is thinking…'}
             </div>
           )}
         </div>
