@@ -49,12 +49,14 @@ export default defineTool(
     if (what === 'series') {
       const { data, error } = await sb
         .from('series')
-        .select('id,series_code,title,metadata')
-        .order('series_code');
+        .select('id,code,title,genre,metadata')
+        .order('code');
       if (error) throw new Error(error.message);
       for (const s of data ?? []) {
-        const genre = ((s.metadata ?? {}) as Record<string, unknown>).genre ?? '?';
-        console.log(`${s.series_code} «${s.title}» · жанр ${genre} · ${s.id}`);
+        // Жанр — СВОЯ колонка (её читает движок жанровых скиллов). В metadata он лежал
+        // только у старых серий; читать оттуда значило показывать «?» для всех живых.
+        const genre = s.genre ?? ((s.metadata ?? {}) as Record<string, unknown>).genre ?? '?';
+        console.log(`${s.code} «${s.title}» · жанр ${genre} · ${s.id}`);
       }
       return;
     }
