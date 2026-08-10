@@ -384,6 +384,10 @@ export function ConciergePanel() {
   // ходов, разбуженных КНОПКОЙ (approval_granted) — а именно там Директор трижды
   // за час спрашивал «она работает или встала?».
   const [turnBusySince, setTurnBusySince] = useState<string | null>(null);
+  // Заполненность контекста Полины — токены последнего запроса хода (мост кладёт
+  // их в mind_session). Разговор не обнуляется между ходами, поэтому число растёт
+  // и упирается в окно модели; Директору нужно видеть это ДО того, как упрётся.
+  const [contextTokens, setContextTokens] = useState<number | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [listening, setListening] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
@@ -945,8 +949,12 @@ export function ConciergePanel() {
         const { data } = await sb.from('episodes').select('metadata').eq('id', openEpisodeId).maybeSingle();
         if (cancelled) return;
         const meta = ((data as { metadata?: Record<string, unknown> } | null)?.metadata ?? {}) as Record<string, unknown>;
-        const mind = (meta.mind_session ?? {}) as { busy?: { started_at?: string } | null };
+        const mind = (meta.mind_session ?? {}) as {
+          busy?: { started_at?: string } | null;
+          context_tokens?: number;
+        };
         setTurnBusySince(mind.busy?.started_at ?? null);
+        setContextTokens(typeof mind.context_tokens === 'number' ? mind.context_tokens : null);
       } catch { /* опрос best-effort: молчащая плашка лучше молчащего экрана */ }
     };
     void read();
@@ -1733,6 +1741,30 @@ export function ConciergePanel() {
                   const sec = Math.max(0, Math.round((nowTick - new Date(turnBusySince).getTime()) / 1000));
                   return sec < 60 ? `${sec} с` : `${Math.floor(sec / 60)} мин ${sec % 60} с`;
                 })()}
+              </span>
+            </div>
+          )}
+          {/* Заполненность контекста Полины. Окно Opus — 200k; порог 70% выбран
+              как «ещё успеваешь свернуть тему», а не «уже поздно». */}
+          {MIND_BRIDGE && contextTokens !== null && (
+            <div
+              className="text-xs px-2 flex items-center gap-1.5 text-text-muted"
+              title={`${contextTokens.toLocaleString('ru-RU')} токенов в последнем запросе хода`}
+            >
+              <span>контекст Полины</span>
+              <span className="tabular-nums">
+                {Math.round(contextTokens / 1000)}k / 200k
+              </span>
+              <span
+                className={
+                  contextTokens / 200_000 >= 0.85
+                    ? 'text-[var(--status-error,#e5484d)]'
+                    : contextTokens / 200_000 >= 0.7
+                      ? 'text-[var(--accent-primary)]'
+                      : 'text-text-muted'
+                }
+              >
+                {Math.round((contextTokens / 200_000) * 100)}%
               </span>
             </div>
           )}

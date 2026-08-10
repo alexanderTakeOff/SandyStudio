@@ -69,23 +69,12 @@ async function main(): Promise<void> {
     }
     const { direct, indirect } = await spentUsd(episodeId);
 
-    // ЛИЧНЫЙ ЛИМИТ ПОЛИНЫ (Директор, 10.08). Он был выставлен ($10) и не
-    // останавливал НИЧЕГО: гейт смотрел только на потолок эпизода, а сам лимит
-    // существовал как число в метаданных, о котором она лишь помнила. Помнить —
-    // не механизм. Считаем по ПРЯМЫМ тратам (кадры, клипы, агенты по API),
-    // потому что именно их она инициирует и именно они стоят денег.
-    const personalCap = Number(
-      (ep.metadata as Record<string, unknown> | null)?.concierge_cap_usd ?? 0,
-    );
-    if (personalCap > 0 && direct >= personalCap) {
-      console.error(
-        `${ep.episode_code}: ТВОЙ ЛИМИТ исчерпан — прямых трат $${direct.toFixed(2)} из $${personalCap.toFixed(2)}. ` +
-          'Дальше тратить можно только с явного слова Директора (он поднимает лимит в Episode Settings). ' +
-          'Не обходи: попроси и жди.',
-      );
-      process.exit(2);
-    }
-
+    // ЛИЧНЫЙ ЛИМИТ ПОЛИНЫ — ПРЕДУПРЕЖДЕНИЕ, НЕ СТЕНА (Директор, 10.08: «пока
+    // горячимся — счётчика расходов в режиме подписки у нас ещё нет; warning да,
+    // блокировать не надо»). Стена, построенная на цифре, которой мы сами не
+    // доверяем, остановит работу по ложному поводу — а это дороже перерасхода.
+    // Предупреждение живёт в контекстной строке каждого хода (--kind context).
+    // Единственная настоящая стена здесь — потолок эпизода по ПРЯМЫМ тратам.
     const ceiling = Number(ep.budget_ceiling ?? 0);
     if (ceiling > 0 && direct >= ceiling) {
       console.error(
@@ -96,7 +85,6 @@ async function main(): Promise<void> {
     }
     console.log(
       `gate ok · прямые $${direct.toFixed(2)} из $${ceiling.toFixed(2)}` +
-        (personalCap > 0 ? ` · твой лимит $${direct.toFixed(2)}/$${personalCap.toFixed(2)}` : '') +
         ` · подписка (косвенно, деньгами не списывается) $${indirect.toFixed(2)}`,
     );
     return;
@@ -130,6 +118,17 @@ async function main(): Promise<void> {
     console.log(
       `подписка (косвенно, деньгами не списывается): $${indirect.toFixed(2)} — твои ходы; в потолок НЕ входят`,
     );
+    // Личный лимит — предупреждение в КАЖДОМ ходе, без стены. Видно и тебе, и в
+    // рапорте Директору; решение тратить дальше — твоё, ответ за него — тоже.
+    const personalCap = Number((ep.metadata as Record<string, unknown> | null)?.concierge_cap_usd ?? 0);
+    if (personalCap > 0 && direct >= personalCap) {
+      console.log(
+        `⚠️ ТВОЙ ЛИЧНЫЙ ЛИМИТ ПРЕВЫШЕН: прямых трат $${direct.toFixed(2)} при лимите $${personalCap.toFixed(2)}. ` +
+          'Блокировки нет — есть твоя обязанность сказать об этом Директору ДО следующей платной операции.',
+      );
+    } else if (personalCap > 0) {
+      console.log(`твой лимит: $${direct.toFixed(2)} из $${personalCap.toFixed(2)} (прямые траты)`);
+    }
     console.log(`изделия: ${counts || 'нет'}`);
     return;
   }

@@ -40,6 +40,8 @@ const ALLOWED_TOOLS = 'Bash,Read,Glob,Grep,Write,Edit,Agent,Task,Skill,TodoWrite
 interface MindSession {
   session_id?: string;
   busy?: { pid: number; turn_ids: string[]; started_at: string } | null;
+  /** Токенов в последнем запросе хода = длина разговора, которую держит модель. */
+  context_tokens?: number;
   updated_at?: string;
 }
 
@@ -188,12 +190,21 @@ async function runTurn(args: {
       }
       if (ev.type === 'result') {
         finalText = String(ev.result ?? '');
+        // Заполненность контекста (Директор, 10.08: «нужна кнопка или строчка —
+        // насколько у Полины забит контекст»). Считаем по последнему запросу хода:
+        // сколько токенов ушло в модель = прочитано из кэша + записано в кэш +
+        // сырой вход. Это и есть длина разговора, которую модель держала перед
+        // глазами; она растёт от хода к ходу и упирается в окно модели.
+        const u = (ev.usage ?? {}) as Record<string, number>;
+        const contextTokens =
+          (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.input_tokens ?? 0);
         resultMeta = {
           session_id: ev.session_id,
           cost_usd: ev.total_cost_usd,
           num_turns: ev.num_turns,
           duration_ms: ev.duration_ms,
           is_error: ev.is_error,
+          context_tokens: contextTokens || null,
         };
       }
     }
@@ -212,7 +223,13 @@ async function runTurn(args: {
   inFlight.delete(args.episodeId);
 
   const sessionId = typeof resultMeta.session_id === 'string' ? resultMeta.session_id : mind.session_id;
-  await writeMindSession(args.episodeId, { session_id: sessionId, busy: null });
+  await writeMindSession(args.episodeId, {
+    session_id: sessionId,
+    busy: null,
+    // Кладём рядом с сессией, чтобы панель показывала заполненность контекста
+    // тем же чтением эпизода, которым уже показывает «Полина работает».
+    context_tokens: typeof resultMeta.context_tokens === 'number' ? resultMeta.context_tokens : undefined,
+  });
 
   if (finalText) {
     await persistTurn(sb as never, args.threadId, {
