@@ -111,6 +111,33 @@ async function main(): Promise<void> {
       console.log(`твой лимит: $${direct.toFixed(2)} из $${personalCap.toFixed(2)} (прямые траты)`);
     }
     console.log(`изделия: ${counts || 'нет'}`);
+
+    // НАСТРОЙКИ ЭПИЗОДА — в каждый ход (Директор, 10.08: «поменял настройки, а она
+    // работала по умолчанию»). Событие `episode_settings_changed` уже будило ум, но
+    // разбудить ≠ сообщить: в ходе он видел деньги и статус, а настроек не видел
+    // никогда. Печатаем ЗНАЧЕНИЯ, а не «есть/НЕТ» — иначе строка не отвечает на
+    // вопрос «чем я сейчас генерирую».
+    const meta = (ep.metadata ?? {}) as Record<string, unknown>;
+    const gen = (meta.generation_config ?? {}) as Record<string, Record<string, unknown>>;
+    const v = gen.video ?? {};
+    const i = gen.image ?? {};
+    const videoLine = [v.provider_id, v.aspect_ratio, v.resolution, v.quality_tier]
+      .filter(Boolean)
+      .join(' · ');
+    const imageLine = [i.provider_id, i.quality].filter(Boolean).join(' · ');
+    console.log(`настройки видео: ${videoLine || 'НЕ ЗАДАНЫ — инструмент возьмёт умолчание'}`);
+    console.log(`настройки кадра: ${imageLine || 'НЕ ЗАДАНЫ — инструмент возьмёт умолчание'}`);
+    const modes = [
+      meta.pipeline_mode ? `режим ${meta.pipeline_mode}` : null,
+      meta.on_model_strictness ? `on-model ${meta.on_model_strictness}` : null,
+      meta.prompt_revision_cap ? `правок промпта ≤${meta.prompt_revision_cap}` : null,
+      meta.reference_regen_cap ? `перегенераций рефа ≤${meta.reference_regen_cap}` : null,
+      meta.video_regen_cap ? `перегенераций клипа ≤${meta.video_regen_cap}` : null,
+      Array.isArray(meta.delivery_targets) && meta.delivery_targets.length
+        ? `доставка ${(meta.delivery_targets as string[]).join(',')}`
+        : null,
+    ].filter(Boolean);
+    if (modes.length) console.log(`режимы и потолки: ${modes.join(' · ')}`);
     return;
   }
 

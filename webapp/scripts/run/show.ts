@@ -35,8 +35,17 @@ export default defineTool(
       const meta = (ep.metadata ?? {}) as Record<string, unknown>;
       console.log(`${ep.episode_code} «${ep.title_working ?? ''}» · статус ${ep.status} · режим ${ep.governance_mode}`);
       console.log(
-        `бюджет: потолок ${ep.budget_ceiling ?? 'НЕ ЗАДАН'} · approved=${meta.budget_approved === true} · настройки=${meta.generation_config ? 'есть' : 'НЕТ'}`,
+        `бюджет: потолок ${ep.budget_ceiling ?? 'НЕ ЗАДАН'} · approved=${meta.budget_approved === true}`,
       );
+      // Настройки печатаем ЗНАЧЕНИЯМИ (Директор, 10.08). «настройки=есть» не отвечало
+      // на единственный вопрос, ради которого их смотрят: чем именно я сейчас генерирую.
+      const gen = (meta.generation_config ?? {}) as Record<string, Record<string, unknown>>;
+      const v = gen.video ?? {};
+      const i = gen.image ?? {};
+      const videoLine = [v.provider_id, v.aspect_ratio, v.resolution, v.quality_tier].filter(Boolean).join(' · ');
+      const imageLine = [i.provider_id, i.quality].filter(Boolean).join(' · ');
+      console.log(`настройки видео: ${videoLine || 'НЕ ЗАДАНЫ'}`);
+      console.log(`настройки кадра: ${imageLine || 'НЕ ЗАДАНЫ'}`);
       const { data: assets } = await sb
         .from('assets')
         .select('file_type,filename,status,version')

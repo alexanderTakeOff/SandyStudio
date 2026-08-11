@@ -17,6 +17,8 @@ import { defineTool } from './_tool';
 import { shotFromFilename, traceInStudio, assertEpisodeReadyToSpend } from './_asset';
 import { generateVideoFalSeedance } from '../../lib/providers/fal-seedance';
 import { extractShotsFromStoryboard } from '../../lib/api/animatic-shotlist';
+import { readEpisodeVideoConfig } from '../../lib/agents/runner';
+import { resolveVideoParams } from '../../lib/api/resolve-generation-params';
 
 /** Sample one pixel well inside the wall area and return it as ffmpeg 0xRRGGBB. */
 function wallColour(src: string): string {
@@ -71,7 +73,7 @@ export default defineTool(
     writes: ['budget_log', 'assets'],
     stations: ['visual_generator'],
   },
-  async ({ arg, env }) => {
+  async ({ arg, env, wasGiven }) => {
     // D90: гейт денег ПЕРВЫМ действием — отказ обязан стоить ноль.
     await assertEpisodeReadyToSpend(env('RUN_EPISODE_ID'));
 
@@ -120,6 +122,34 @@ export default defineTool(
       );
     }
 
+    // Настройки эпизода УПРАВЛЯЮТ инструментом (Директор, 10.08: «поменял настройки —
+    // Полина работала по умолчанию»). Здесь аспект и разрешение были зашиты строками
+    // '9:16' и '720p', поэтому `episodes.metadata.generation_config.video` не управлял
+    // прямым путём вообще — сколько его ни меняй в UI. Читаем ТЕМИ ЖЕ функциями, что
+    // агентский конвейер (`readEpisodeVideoConfig` + `resolveVideoParams`), а не своей
+    // копией: иначе два пути разойдутся в трактовке одной настройки. Порядок честный —
+    // явный аргумент побеждает настройку, настройка побеждает умолчание.
+    const { data: epRow } = await sb
+      .from('episodes')
+      .select('metadata')
+      .eq('id', env('RUN_EPISODE_ID'))
+      .maybeSingle();
+    const episodeVideoConfig = readEpisodeVideoConfig(epRow);
+    const resolved = resolveVideoParams({
+      episodeConfig: episodeVideoConfig,
+      shotOverride: { quality_tier: wasGiven('tier') ? tier : null },
+    });
+    const effectiveAspect = resolved.aspectRatio;
+    // Разрешение может не быть задано ни настройкой, ни серией — тогда держим прежнее
+    // умолчание инструмента, а не роняем вызов.
+    const effectiveResolution = resolved.resolution ?? '720p';
+    const effectiveTier = wasGiven('tier') ? tier : resolved.qualityTier;
+    console.log(
+      `аспект=${effectiveAspect} · разрешение=${effectiveResolution} · тир=${effectiveTier}` +
+        ` (${episodeVideoConfig ? 'настройки эпизода' : 'умолчание инструмента'};` +
+        ` тир: ${wasGiven('tier') ? 'аргумент' : 'из настроек/умолчания'})`,
+    );
+
     const srcAbs = resolve(process.cwd(), arg('frame'));
     if (!existsSync(srcAbs)) throw new Error(`frame not found: ${srcAbs}`);
     const paddedAbs = srcAbs.replace(/\.png$/, '.916.png');
@@ -132,9 +162,9 @@ export default defineTool(
     const res = await generateVideoFalSeedance({
       prompt,
       durationSeconds: duration,
-      aspectRatio: '9:16',
-      resolution: '720p',
-      quality: tier,
+      aspectRatio: effectiveAspect,
+      resolution: effectiveResolution,
+      quality: effectiveTier,
       referenceImageBase64: readFileSync(paddedAbs).toString('base64'),
       referenceImageMime: 'image/png',
       seed,
@@ -155,7 +185,7 @@ export default defineTool(
       episode_id: env('RUN_EPISODE_ID'),
       agent_id: 'DIRECT-RUN',
       api_provider: 'fal',
-      model_or_tier: `${res.model_id}/${tier}/720p/9:16`,
+      model_or_tier: `${res.model_id}/${effectiveTier}/${effectiveResolution}/${effectiveAspect}`,
       operation: `clip:${out.split(/[\\/]/).pop()}`,
       cost_usd: res.cost_usd,
       duration_ms: ms,
@@ -182,7 +212,7 @@ export default defineTool(
         // Длительность стоит РЯДОМ с ценой (Директор, 10.08): Seedance берёт
         // посекундно, поэтому «$1.69» без секунд не говорит, дорого это или нет,
         // а «6.0с» сразу даёт цену секунды и объясняет разницу между клипами.
-        description: `клип ${shot} · ${res.duration_seconds}с · ${res.model_id}/${tier} · $${res.cost_usd.toFixed(2)}`,
+        description: `клип ${shot} · ${res.duration_seconds}с · ${res.model_id}/${effectiveTier} · $${res.cost_usd.toFixed(2)}`,
         origin: 'gen-video',
         // R22/D101: промпт и параметры клипа — часть изделия; регистратор кладёт
         // их плоскими полями по эталону exec-vgen.
@@ -190,9 +220,9 @@ export default defineTool(
           prompt,
           provider: 'seedance-fal-img2vid',
           model: res.model_id,
-          tier,
-          resolution: '720p',
-          aspect_ratio: '9:16',
+          tier: effectiveTier,
+          resolution: effectiveResolution,
+          aspect_ratio: effectiveAspect,
           seed,
           cost_usd: res.cost_usd,
         },
