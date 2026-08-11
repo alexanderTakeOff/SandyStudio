@@ -103,10 +103,26 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
   // содержимое меняется ПОСЛЕ выхода из DRAFT, получает новую строку `max+1`,
   // а не переписывает слот — история правок обязана сохраняться (паттерн
   // `nextVersionFor`, lib/api/series-bible.ts). DRAFT итерируется на месте.
-  if (existing && a.content !== undefined && a.content !== existing.content && existing.status !== 'DRAFT') {
+  //
+  // ЗАМОК (11.08). Тот же слот, но другая причина: строку в LOCKED не правит
+  // НИКТО, кроме Директора. До этой ветки `register-canon --slug … --file …`
+  // спокойно переписывал байты и статус утверждённой плиты — замок слетал молча,
+  // а имя файла пересобиралось в `-APPROVED.png`. Любое касание LOCKED уходит в
+  // версию max+1 со статусом REVIEW: правка живёт, замок цел, решение — за
+  // Директором (та же формулировка, что в `set-status.ts`).
+  const locked = existing?.status === 'LOCKED';
+  const contentChanged = Boolean(existing) && a.content !== undefined && a.content !== existing!.content;
+  const touchesLocked =
+    locked && (Boolean(a.srcPath) || contentChanged || a.description !== undefined || Boolean(a.status));
+  if (existing && ((contentChanged && existing.status !== 'DRAFT') || touchesLocked)) {
     const nextVersion = ((existing.version as number | null) ?? 1) + 1;
     const nextTag = `v${String(nextVersion).padStart(2, '0')}`;
-    const status = a.status ?? 'REVIEW';
+    const status = touchesLocked ? 'REVIEW' : (a.status ?? 'REVIEW');
+    if (touchesLocked) {
+      console.warn(
+        `⚠ ${existing.filename} — LOCKED. Замок снимает только Директор; правка ушла в ${nextTag} (REVIEW).`,
+      );
+    }
     const newFilename = (a.filename ?? existing.filename)
       .replace(/-v\d+-/, `-${nextTag}-`)
       .replace(/-(DRAFT|REVIEW|REVISION|APPROVED|LOCKED)(\.[^.]+)$/, `-${status}$2`);
@@ -128,7 +144,9 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
         drive_path: `/api/media/${newFilename}`,
         status,
         description: a.description ?? null,
-        content: a.content,
+        // Текст плиты НЕ теряется, когда меняют одни байты: новая версия
+        // наследует содержимое старой, если своего ей не передали.
+        content: a.content ?? existing.content,
         agent_id: a.agentId ?? 'DIRECT-RUN',
         version: nextVersion,
         metadata: { ...(existing.metadata as object), ...(a.metadata ?? {}) },
@@ -157,7 +175,12 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
     };
     if (a.status) patch.status = a.status;
     if (a.description) patch.description = a.description;
-    if (a.content ?? a.description) patch.content = a.content ?? a.description;
+    // ОПИСАНИЕ И СОДЕРЖИМОЕ — РАЗНЫЕ ПОЛЯ (11.08). Здесь стоял fallback
+    // `content = content ?? description`, и `register-canon --desc «одна строка»`
+    // клал эту строку в `content`, затирая текст плиты целиком: инструмент
+    // содержимое не шлёт НИКОГДА, так что fallback работал исключительно как
+    // разрушитель. Описание живёт в `description`, тело — в `content`.
+    if (a.content !== undefined) patch.content = a.content;
 
     // D76/D84: не пустить STB в APPROVED/LOCKED без машиночитаемого списка кадров
     // и с shot_id не по канону — резолвим статус/контент так же, как патч выше.
