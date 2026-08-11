@@ -27,9 +27,6 @@ import { VGENPilotPillbar } from '@/components/pipeline/VGENPilotPillbar';
 import { VGENBatchPanel } from '@/components/vgen/VGENBatchPanel';
 import { EpisodeTimelineSection } from '@/components/timeline/EpisodeTimelineSection';
 import type { PipelineStageId } from '@/lib/api/pipeline-stages';
-import { stageIdentity, stageRamp } from '@/lib/api/pipeline-stages';
-import { ASSET_TYPE_TAXONOMY } from '@/lib/uiux/taxonomy';
-import type { AssetTypeCode } from '@/lib/uiux/types';
 import { agentDisplayName } from '@/lib/api/agent-names';
 import { ActivityEventRow } from '@/components/activity/ActivityEventRow';
 import { fetcher } from '@/lib/swr';
@@ -111,45 +108,37 @@ const NODE_GLYPH: Record<Stage['state'], string> = {
   failed: '✗',
 };
 
-// Kebab colour grammar (2026-07-25) on the coarse stage-rail: HUE = stable stage
-// identity (never state), GLOW = activity, WEIGHT = approval — so a node no longer
-// jumps amber→green the moment it's approved. The two per-shot pipelines share the
-// family×role ramp (cold = references, warm = video); every other stage keeps its
-// per-asset-type identity. Grammar helpers are node-safe in pipeline-stages.ts —
-// one source of truth with the animatic kebab.
-const RAIL_RAMP_KEY: Record<string, string> = {
-  reference_designer: 'ref-plan',
-  reference_critic: 'ref-critic',
-  episode_references: 'ref-artist',
-  shot_designer: 'vid-plan',
-  shot_critic: 'vid-critic',
-  visual_generator: 'vid-artist',
-};
-
 const nodeGlow = (c: string) => `0 0 6px color-mix(in oklab, ${c} 55%, transparent)`;
 
-/** STABLE per-stage identity hue — family×role for the two per-shot pipelines,
- *  else the asset-type token, else neutral. NEVER depends on run state. */
-function stageIdentityHue(s: Stage): string {
-  const id = stageIdentity(RAIL_RAMP_KEY[s.id]);
-  if (id) return stageRamp(id.family, id.role);
-  // `latest_asset_type` is the full file_type (e.g. 'IMG-episode_ref', 'AUD-music');
-  // the taxonomy is keyed by the short prefix code (IMG / AUD / SCR / …).
-  const code = s.latest_asset_type?.split('-')[0];
-  const meta = code ? ASSET_TYPE_TAXONOMY[code as AssetTypeCode] : undefined;
-  return meta ? `var(${meta.cssVar})` : 'var(--text-secondary)';
-}
+// ЦВЕТ РЕЛЬСА = СОСТОЯНИЕ (11.08, канон `specs/system/pipeline_view.md` §3.2).
+//
+// До этого цвет держал ИДЕНТИЧНОСТЬ стадии, а состояние выражалось только
+// свечением и жирностью — и утверждённой стадии зелёного не доставалось вовсе.
+// Директор читает колонку по диагонали: ему нужно «где встало» и «что готово»
+// одним взглядом, а не какого рода работа живёт в строке.
+//
+// Кебаб аниматика остаётся на прежней грамматике (`stageIdentity`/`stageRamp` в
+// pipeline-stages.ts) — там цвет как раз обязан говорить о РОДЕ работы. Два
+// разных алфавита на двух разных поверхностях; ни один не отменяет другой.
+const STATE_TOKEN: Record<Stage['state'], string> = {
+  idle: 'var(--text-muted)',
+  running: 'var(--accent-primary)',
+  approved: 'var(--accent-success)',
+  blocked: 'var(--accent-info)',
+  failed: 'var(--accent-danger)',
+};
 
-/** State drives GLOW + WEIGHT + PULSE only (never hue). Idle / unstaffed = grey,
- *  no glow. Error states keep an honest signal hue (a genuine exception, not the
- *  forbidden approve-jump). Running pulses in-identity; approved goes bold. */
 function nodeVisual(s: Stage): { color: string; glow?: string; pulse: boolean; bold: boolean } {
-  if (s.state === 'idle' || s.unstaffed) return { color: 'var(--text-muted)', pulse: false, bold: false };
-  if (s.state === 'blocked') return { color: 'var(--accent-info)', glow: nodeGlow('var(--accent-info)'), pulse: false, bold: false };
-  if (s.state === 'failed') return { color: 'var(--accent-danger)', glow: nodeGlow('var(--accent-danger)'), pulse: false, bold: false };
-  const color = stageIdentityHue(s);
-  if (s.state === 'running') return { color, glow: nodeGlow(color), pulse: true, bold: false };
-  return { color, glow: nodeGlow(color), pulse: false, bold: true }; // approved
+  if (s.state === 'idle' || s.unstaffed) {
+    return { color: STATE_TOKEN.idle, pulse: false, bold: false };
+  }
+  const color = STATE_TOKEN[s.state];
+  return {
+    color,
+    glow: nodeGlow(color),
+    pulse: s.state === 'running',
+    bold: s.state === 'approved',
+  };
 }
 
 // Topic 3 — Critic verdict chip color (semantic tokens only).
@@ -568,7 +557,24 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
               onChanged={() => mutate()}
             />
             <div className="mt-4 pt-3 border-t border-glass space-y-1 text-[10px] text-text-muted">
-              <div>● approved · ◐ running · ◇ blocked · ✗ failed · ○ idle</div>
+              {/* Цвет = состояние (канон pipeline_view.md §3.2) — легенда обязана
+                  говорить тем же алфавитом, что и рельс, иначе она врёт. */}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                {(
+                  [
+                    ['approved', 'готово'],
+                    ['running', 'идёт'],
+                    ['blocked', 'ждёт'],
+                    ['failed', 'сбой'],
+                    ['idle', 'не начато'],
+                  ] as ReadonlyArray<[Stage['state'], string]>
+                ).map(([state, label]) => (
+                  <span key={state} className="inline-flex items-center gap-1">
+                    <span style={{ color: STATE_TOKEN[state] }}>{NODE_GLYPH[state]}</span>
+                    {label}
+                  </span>
+                ))}
+              </div>
               <div>Click a stage → workstation. Designers/Critics tuck under their stage.</div>
               <div>Hover any stage for actions ⋯</div>
             </div>
