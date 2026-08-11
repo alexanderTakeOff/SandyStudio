@@ -20,8 +20,9 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
-import { CheckCheck, Pencil, RotateCcw, Eye, Shuffle, X } from 'lucide-react';
+import { CheckCheck, Pencil, RotateCcw, Eye, Shuffle, X, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { MusicUploadButton } from '@/components/preview/MusicUploadButton';
 import { EditorModal } from '@/components/editor/EditorModal';
 import { RetriggerStageModal } from '@/components/pipeline/RetriggerStageModal';
 import { CriticVerdictOverrideModal } from '@/components/assets/CriticVerdictOverrideModal';
@@ -254,6 +255,78 @@ function TextArtifactPreview({ assetId }: { assetId: string }) {
   );
 }
 
+/**
+ * Пустая станция музыки: две кнопки Директора вместо «нет изделия».
+ *
+ * Загрузка идёт роутом уровня ЭПИЗОДА (строки `AUD-music` ещё нет), «Без
+ * музыки» — существующим идемпотентным `skip-music`. Ни одна из них не заводит
+ * новой механики: первая зовёт `ingestUploadedMusic`, вторая — тот же роут, что
+ * и раньше висел только в плеере.
+ */
+function MusicStationEmpty({
+  episodeId,
+  onChanged,
+}: {
+  episodeId: string;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSkip(): Promise<void> {
+    if (typeof window !== 'undefined') {
+      const ok = window.confirm('Собрать эпизод БЕЗ музыки? Конвейер поедет дальше молча.');
+      if (!ok) return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}/skip-music`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ directorConfirm: true }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Не вышло отметить «без музыки»');
+      }
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[12px] text-text-muted italic">
+        Трека пока нет. Музыку кладёт Директор — композитор её не сочиняет.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <MusicUploadButton
+          url={`/api/episodes/${episodeId}/upload-music`}
+          onDone={onChanged}
+          label="Загрузить трек"
+          disabled={busy}
+        />
+        <Button variant="ghost" size="sm" onClick={() => void handleSkip()} disabled={busy}>
+          <VolumeX size={14} /> Без музыки
+        </Button>
+      </div>
+      <p className="text-[11px] text-text-muted">
+        Загруженный трек сразу утверждается, попадает в таймлайн аниматика и в финальный кат.
+        Фейды выставляются ползунками в плеере аниматика.
+      </p>
+      {error && (
+        <span className="text-[11px]" style={{ color: 'var(--accent-danger)' }}>
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function StageWorkspacePanel({
   episodeId,
   stage,
@@ -376,10 +449,17 @@ export function StageWorkspacePanel({
           <Eye size={14} /> Open artifact preview
         </Button>
       )}
-      {!stage.unstaffed && !hasAsset && (
+      {!stage.unstaffed && !hasAsset && stage.id !== 'music_generator' && (
         <p className="text-[12px] text-text-muted italic">
           No artifact produced yet for this stage.
         </p>
+      )}
+      {/* Станция музыки — вход Директора, а не агента: композитор возвращает
+          mock, реальный трек всегда приходит загрузкой. Пока строки `AUD-music`
+          нет, обе кнопки жили в превью ассета, которого не существует — станция
+          показывала «нет изделия» и не предлагала ничего (прогон E06, 10.08). */}
+      {!stage.unstaffed && !hasAsset && stage.id === 'music_generator' && (
+        <MusicStationEmpty episodeId={episodeId} onChanged={onChanged} />
       )}
 
       {/* Critic verdict block (q10a — also shown inside the Artist's workstation) */}

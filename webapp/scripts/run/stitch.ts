@@ -11,6 +11,9 @@ import { defineTool } from './_tool';
 import { traceInStudio, shotFromFilename } from './_asset';
 import { sb } from './_env';
 import { buildStitchEdl } from '../../lib/api/stitch-edl';
+import { buildConcatList, buildMusicAudioFilter, type ConcatShotEntry } from '../../lib/providers/ffmpeg-stitch';
+import { cachedFileIfPresent } from '../../lib/media-cache';
+import type { AudioTrack } from '../../lib/api/animatic-shotlist';
 
 function ff(args: string[]): void {
   execFileSync('ffmpeg', ['-v', 'error', '-y', ...args], { stdio: ['ignore', 'inherit', 'inherit'] });
@@ -24,6 +27,20 @@ function shotKey(s: string): string | null {
   if (viaHelper) return `sh${viaHelper.replace(/^sh/i, '').padStart(2, '0')}`;
   const m = /(\d{1,3})(?!.*\d)/.exec(s);
   return m ? `sh${m[1].padStart(2, '0')}` : null;
+}
+
+/**
+ * Файл музыки НА ДИСКЕ. Трек в монтажном листе адресуется браузерным URL
+ * (`/api/media/<file>`) — сборщику нужен путь; по HTTP инструмент не ходит, всё
+ * уже лежит в медиа-кэше, куда его положила загрузка.
+ * Читаем `original_url ?? url` — таков закон читателя `AudioTrack`.
+ */
+async function musicFileOnDisk(track: AudioTrack): Promise<string | null> {
+  const src = (track.original_url ?? track.url ?? '').trim();
+  if (!src) return null;
+  if (existsSync(src)) return src;
+  const viaCache = await cachedFileIfPresent(decodeURIComponent(src.split('/').pop() ?? ''));
+  return viaCache;
 }
 
 function durationOf(file: string): number {
@@ -72,8 +89,12 @@ export default defineTool(
     // (`lib/api/stitch-edl.ts`), иначе два пути снова разойдутся в арифметике.
     // Файлы при этом берём локальные (`--dir`): у прямого пути своя нарезка,
     // сопоставляем её с листом по номеру кадра.
-    const parts: Array<{ path: string; inpoint?: number; outpoint?: number }> = [];
+    // Формат монтажного листа — общий с агентским сборщиком (`ConcatShotEntry`):
+    // `buildConcatList` сам переводит «начало + длительность» в inpoint/outpoint.
+    const parts: ConcatShotEntry[] = [];
     let orderForTrace: string[] = [];
+    let musicTrack: AudioTrack | null = null;
+    let plannedSeconds = 0;
 
     if (manualMode) {
       // АВАРИЙНЫЙ РЕЖИМ. Файлы в --dir — чужая нарезка: она УЖЕ обрезана, и класть
@@ -81,6 +102,7 @@ export default defineTool(
       // там, где в файле 9.5 — двойная обрезка). Поэтому здесь клеим целиком и
       // говорим об этом вслух.
       console.warn('⚠ ручной режим (--dir/--order): обрезки Директора НЕ применяются — файлы клеятся целиком');
+      console.warn('⚠ ручной режим: МУЗЫКА НЕ подмешивается — она живёт в монтажном листе, которого здесь нет');
       const dir = resolve(process.cwd(), dirArg);
       for (const name of order) {
         const p = join(dir, `${name}.mp4`);
@@ -96,6 +118,7 @@ export default defineTool(
       if (edl.missing.length > 0) {
         throw new Error(`нет APPROVED-клипа для кадров: ${edl.missing.join(', ')}`);
       }
+      musicTrack = edl.musicTrack;
       console.log(
         `монтажный лист аниматика: ${edl.orderedShots.length} кадров` +
           (edl.excludedShots.length ? ` · исключены Директором: ${edl.excludedShots.join(', ')}` : ''),
@@ -109,9 +132,10 @@ export default defineTool(
         const raw = existsSync(src) ? durationOf(src) : NaN;
         parts.push({
           path: src,
-          inpoint: s.inpointSeconds > 0 ? s.inpointSeconds : undefined,
-          outpoint: s.inpointSeconds + s.durationSeconds,
+          inpointSeconds: s.inpointSeconds > 0 ? s.inpointSeconds : undefined,
+          durationSeconds: s.durationSeconds,
         });
+        plannedSeconds += s.durationSeconds;
         console.log(
           `${s.shotId}: ${Number.isFinite(raw) ? raw.toFixed(1) + 's' : 'исходник'} → ${s.durationSeconds.toFixed(1)}s` +
             (s.inpointSeconds > 0 ? ` (голова ${s.inpointSeconds.toFixed(1)}s)` : ''),
@@ -131,29 +155,52 @@ export default defineTool(
     ]);
     parts.push({ path: tailPath });
 
+    // Список пишет ОБЩИЙ билдер (`ffmpeg-stitch.ts`) — тот же, что у агентского
+    // сборщика: он ставит inpoint/outpoint в каноничном порядке и экранирует
+    // кавычки в путях, чего наша ручная сборка не делала.
     const listPath = join(work, 'list.txt');
-    // Формат concat-демуксера: inpoint/outpoint идут ПОСЛЕ своей строки `file`.
-    writeFileSync(
-      listPath,
-      parts
-        .map((p) => {
-          const lines = [`file '${p.path.replace(/\\/g, '/')}'`];
-          if (p.inpoint !== undefined) lines.push(`inpoint ${p.inpoint.toFixed(3)}`);
-          if (p.outpoint !== undefined) lines.push(`outpoint ${p.outpoint.toFixed(3)}`);
-          return lines.join('\n');
-        })
-        .join('\n'),
-    );
+    writeFileSync(listPath, buildConcatList(parts));
+
+    // МУЗЫКА (11.08). Инструмент кодировал кат с `-an` — без звука вовсе, и
+    // трек накладывали руками длинной командой ffmpeg. Именно она 10.08 повесила
+    // единственный шелл сессии на незакрытой кавычке и стоила хода. Монтажный
+    // лист музыку уже отдаёт; фейды Директор ставит ползунками в плеере, мы их
+    // читаем — форму фильтра строит общая `buildMusicAudioFilter`.
+    let musicPath: string | null = null;
+    if (musicTrack && !musicTrack.muted) {
+      musicPath = await musicFileOnDisk(musicTrack);
+      if (!musicPath) {
+        throw new Error(
+          `музыка есть в монтажном листе (${musicTrack.filename}), но файла нет ни на диске, ` +
+            `ни в медиа-кэше: ${musicTrack.original_url ?? musicTrack.url}`,
+        );
+      }
+      console.log(`музыка: ${musicTrack.filename}`);
+    } else if (musicTrack?.muted) {
+      console.log('музыка: дорожка выключена Директором (muted) — кат собирается без звука');
+    }
+
+    const audioFilter = musicPath
+      ? buildMusicAudioFilter(musicTrack!, plannedSeconds + tail)
+      : null;
 
     mkdirSync(dirname(out), { recursive: true });
     // Re-encode rather than stream-copy: the clips come back from the provider with
     // their own headers, and a copy-concat of mismatched streams produces a file that
     // plays for some players and not others — a silent defect on delivery.
-    ff([
-      '-f', 'concat', '-safe', '0', '-i', listPath,
-      '-c:v', 'libx264', '-preset', 'medium', '-crf', '19',
-      '-pix_fmt', 'yuv420p', '-r', '24', '-an', out,
-    ]);
+    const args: string[] = ['-f', 'concat', '-safe', '0', '-i', listPath];
+    // Короткий трек зацикливается, иначе `-shortest` обрежет КАТ по длине музыки.
+    if (musicPath) args.push('-stream_loop', '-1', '-i', musicPath);
+    args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '19', '-pix_fmt', 'yuv420p', '-r', '24');
+    if (musicPath) {
+      args.push('-map', '0:v', '-map', '1:a');
+      if (audioFilter) args.push('-filter:a', audioFilter);
+      args.push('-c:a', 'aac', '-b:a', '192k', '-shortest');
+    } else {
+      args.push('-an');
+    }
+    args.push(out);
+    ff(args);
 
     rmSync(work, { recursive: true, force: true });
     console.log(`OK ${out}`);
