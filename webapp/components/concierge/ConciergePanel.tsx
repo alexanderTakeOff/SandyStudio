@@ -24,7 +24,7 @@ import {
 } from 'react';
 import { usePathname } from 'next/navigation';
 import {
-  MessageCircle, Mic, MicOff, Send, Volume2, VolumeX, X, Sparkles, MessageSquarePlus,
+  MessageCircle, Mic, MicOff, Send, Volume2, VolumeX, X, Sparkles, MessageSquarePlus, BrainCircuit,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
@@ -1321,6 +1321,37 @@ export function ConciergePanel() {
     }
   }
 
+  // 11.08 — «Новая сессия ума». Залипший шелл (незакрытая кавычка) не лечится
+  // новым ходом: `--resume` восстанавливает состояние вместе с сессией, и
+  // единственное лекарство — сброс `session_id`, который до сегодня делали
+  // руками в базе. Отличие от «Нового разговора» рядом: тот архивирует
+  // ПЕРЕПИСКУ, этот забывает ПАМЯТЬ Полины; история тредa остаётся на месте.
+  async function handleResetMindSession() {
+    if (!openEpisodeId) return;
+    if (typeof window !== 'undefined') {
+      const ok = window.confirm(
+        'Начать новую сессию ума? Полина забудет текущий разговор и стартует с чистой памятью. Переписка сохранится.',
+      );
+      if (!ok) return;
+    }
+    try {
+      const res = await fetch('/api/mind/turn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ episodeId: openEpisodeId, reset: true }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        if (typeof window !== 'undefined') window.alert(j.error ?? 'Не вышло сбросить сессию');
+        return;
+      }
+      void refreshStatus();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[prod-assistant] mind session reset failed', err);
+    }
+  }
+
   async function toggleVoice() {
     setMicError(null);
     const Ctor = getSpeechRecognition();
@@ -1568,6 +1599,17 @@ export function ConciergePanel() {
             >
               <MessageSquarePlus size={16} />
             </button>
+            {MIND_BRIDGE && openEpisodeId && (
+              <button
+                onClick={() => void handleResetMindSession()}
+                disabled={streaming || turnBusySince !== null}
+                aria-label="Новая сессия ума"
+                title="Новая сессия ума — Полина забывает разговор и стартует чистой сессией (лечит залипший шелл)"
+                className="h-8 w-8 rounded-md text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <BrainCircuit size={16} />
+              </button>
+            )}
             <button
               onClick={toggleTts}
               aria-label={ttsEnabled ? 'Disable voice replies' : 'Enable voice replies'}

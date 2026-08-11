@@ -38,7 +38,9 @@ const TURN_TIMEOUT_MS = Number(process.env.MIND_BRIDGE_TURN_TIMEOUT_MS ?? 45 * 6
 const ALLOWED_TOOLS = 'Bash,Read,Glob,Grep,Write,Edit,Agent,Task,Skill,TodoWrite';
 
 interface MindSession {
-  session_id?: string;
+  session_id?: string | null;
+  /** Сессия, закрытая кнопкой «Новая сессия ума» — след для разбора, не для resume. */
+  previous_session_id?: string | null;
   busy?: { pid: number; turn_ids: string[]; started_at: string } | null;
   /** Токенов в последнем запросе хода = длина разговора, которую держит модель. */
   context_tokens?: number;
@@ -49,6 +51,16 @@ interface MindSession {
 
 /** Ходы в полёте — по эпизоду. In-memory + зеркало в episodes.metadata. */
 const inFlight = new Map<string, ChildProcessWithoutNullStreams>();
+
+/**
+ * Подряд идущие обрывы по эпизоду. Залипший шелл (незакрытая кавычка) валит
+ * КАЖДЫЙ следующий ход, и внешне это неотличимо от обычной неудачи — 10.08
+ * потратили четыре хода, прежде чем поняли. Считаем и говорим вслух; сбрасывает
+ * сессию ДИРЕКТОР кнопкой, а не мост: ход падает и от таймаута, и от сети, а
+ * молча выкидывать память Полины машина не вправе.
+ */
+const failStreak = new Map<string, number>();
+const FAIL_STREAK_HINT_AT = 2;
 
 /**
  * Ф4: события студии, которые БУДЯТ Полину (кнопки Директора и просьбы
@@ -268,6 +280,7 @@ async function runTurn(args: {
       });
     }
     await claimTurns(args.turnIds, 'answered');
+    failStreak.delete(args.episodeId);
     log(`ход ← ok · $${resultMeta.cost_usd ?? '?'} · exit=${code}`);
   } else {
     // Обрыв — честной строкой, а не молчанием (худший класс отказа — тишина).
@@ -278,7 +291,19 @@ async function runTurn(args: {
       metadata: { bridge: true, error: true },
     });
     await claimTurns(args.turnIds, 'failed');
-    log(`ход ← ОБРЫВ exit=${code}`);
+    const streak = (failStreak.get(args.episodeId) ?? 0) + 1;
+    failStreak.set(args.episodeId, streak);
+    if (streak >= FAIL_STREAK_HINT_AT) {
+      await persistTurn(sb as never, args.threadId, {
+        role: 'system',
+        event_type: 'message',
+        content:
+          `⚠ ходов подряд оборвано: ${streak}. Похоже на залипший шелл сессии — новый ход это не лечит, ` +
+          '«--resume» тянет состояние вместе с сессией. Помогает кнопка «Новая сессия ума».',
+        metadata: { bridge: true, kind: 'mind_session_stuck_hint', fail_streak: streak },
+      });
+    }
+    log(`ход ← ОБРЫВ exit=${code} · подряд: ${streak}`);
   }
 }
 
