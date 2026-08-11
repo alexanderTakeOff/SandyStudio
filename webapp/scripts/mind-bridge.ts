@@ -42,6 +42,8 @@ interface MindSession {
   busy?: { pid: number; turn_ids: string[]; started_at: string } | null;
   /** Токенов в последнем запросе хода = длина разговора, которую держит модель. */
   context_tokens?: number;
+  /** Окно модели, которой запущен ход — панель не должна его угадывать. */
+  context_limit?: number;
   updated_at?: string;
 }
 
@@ -150,6 +152,12 @@ async function runTurn(args: {
   child.stdin.end();
 
   let finalText = '';
+  /** Токенов в ПОСЛЕДНЕМ запросе хода = длина разговора перед глазами модели. */
+  let lastRequestTokens = 0;
+  // Окно модели НЕ хардкодим в панели: у 1M-варианта Opus оно впятеро больше, чем
+  // у обычного, и вчерашние «200k» дали Директору 519% при живых 209k. Мост знает,
+  // какой моделью запускает ход, — он и сообщает предел вместе с числом.
+  const contextLimit = Number(process.env.MIND_CONTEXT_LIMIT ?? 1_000_000);
   let resultMeta: Record<string, unknown> = {};
   let stderrTail = '';
   let buf = '';
@@ -172,6 +180,19 @@ async function runTurn(args: {
         continue;
       }
       if (ev.type === 'assistant') {
+        // ЗАПОЛНЕННОСТЬ КОНТЕКСТА берётся отсюда, а не из `result` (исправлено
+        // 11.08). В `result.usage` лежит СУММА по всем запросам хода: за ход из
+        // двадцати обращений кэш-чтение складывается двадцать раз, и панель
+        // показала Директору «1038k / 200k · 519%». Длина разговора — это размер
+        // ОДНОГО, последнего запроса: сколько модель держала перед глазами в этот
+        // момент. Поэтому запоминаем usage последнего ответа ассистента.
+        const usage = (ev.message as { usage?: Record<string, number> } | undefined)?.usage;
+        if (usage) {
+          lastRequestTokens =
+            (usage.cache_read_input_tokens ?? 0) +
+            (usage.cache_creation_input_tokens ?? 0) +
+            (usage.input_tokens ?? 0);
+        }
         // Вызовы инструментов — в тред как аудит (панель их пока не рисует,
         // но строка есть — Ф5 её покажет).
         const msg = ev.message as { content?: Array<Record<string, unknown>> } | undefined;
@@ -190,14 +211,7 @@ async function runTurn(args: {
       }
       if (ev.type === 'result') {
         finalText = String(ev.result ?? '');
-        // Заполненность контекста (Директор, 10.08: «нужна кнопка или строчка —
-        // насколько у Полины забит контекст»). Считаем по последнему запросу хода:
-        // сколько токенов ушло в модель = прочитано из кэша + записано в кэш +
-        // сырой вход. Это и есть длина разговора, которую модель держала перед
-        // глазами; она растёт от хода к ходу и упирается в окно модели.
-        const u = (ev.usage ?? {}) as Record<string, number>;
-        const contextTokens =
-          (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.input_tokens ?? 0);
+        const contextTokens = lastRequestTokens;
         resultMeta = {
           session_id: ev.session_id,
           cost_usd: ev.total_cost_usd,
@@ -229,6 +243,7 @@ async function runTurn(args: {
     // Кладём рядом с сессией, чтобы панель показывала заполненность контекста
     // тем же чтением эпизода, которым уже показывает «Полина работает».
     context_tokens: typeof resultMeta.context_tokens === 'number' ? resultMeta.context_tokens : undefined,
+    context_limit: contextLimit,
   });
 
   if (finalText) {

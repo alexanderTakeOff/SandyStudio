@@ -388,6 +388,10 @@ export function ConciergePanel() {
   // их в mind_session). Разговор не обнуляется между ходами, поэтому число растёт
   // и упирается в окно модели; Директору нужно видеть это ДО того, как упрётся.
   const [contextTokens, setContextTokens] = useState<number | null>(null);
+  // Предел приходит от моста вместе с числом: он знает, какой моделью запущен ход.
+  // Хардкод «200k» в панели дал Директору «1038k / 200k · 519%» — неверным было и
+  // число (сумма по всем запросам хода вместо последнего), и знаменатель.
+  const [contextLimit, setContextLimit] = useState<number>(1_000_000);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [listening, setListening] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
@@ -952,9 +956,13 @@ export function ConciergePanel() {
         const mind = (meta.mind_session ?? {}) as {
           busy?: { started_at?: string } | null;
           context_tokens?: number;
+          context_limit?: number;
         };
         setTurnBusySince(mind.busy?.started_at ?? null);
         setContextTokens(typeof mind.context_tokens === 'number' ? mind.context_tokens : null);
+        if (typeof mind.context_limit === 'number' && mind.context_limit > 0) {
+          setContextLimit(mind.context_limit);
+        }
       } catch { /* опрос best-effort: молчащая плашка лучше молчащего экрана */ }
     };
     void read();
@@ -1744,8 +1752,8 @@ export function ConciergePanel() {
               </span>
             </div>
           )}
-          {/* Заполненность контекста Полины. Окно Opus — 200k; порог 70% выбран
-              как «ещё успеваешь свернуть тему», а не «уже поздно». */}
+          {/* Заполненность контекста Полины. Предел сообщает мост — он знает, какой
+              моделью запущен ход; порог 70% выбран как «ещё успеваешь свернуть тему». */}
           {MIND_BRIDGE && contextTokens !== null && (
             <div
               className="text-xs px-2 flex items-center gap-1.5 text-text-muted"
@@ -1753,18 +1761,18 @@ export function ConciergePanel() {
             >
               <span>контекст Полины</span>
               <span className="tabular-nums">
-                {Math.round(contextTokens / 1000)}k / 200k
+                {Math.round(contextTokens / 1000)}k / {Math.round(contextLimit / 1000)}k
               </span>
               <span
                 className={
-                  contextTokens / 200_000 >= 0.85
+                  contextTokens / contextLimit >= 0.85
                     ? 'text-[var(--status-error,#e5484d)]'
-                    : contextTokens / 200_000 >= 0.7
+                    : contextTokens / contextLimit >= 0.7
                       ? 'text-[var(--accent-primary)]'
                       : 'text-text-muted'
                 }
               >
-                {Math.round((contextTokens / 200_000) * 100)}%
+                {Math.round((contextTokens / contextLimit) * 100)}%
               </span>
             </div>
           )}
