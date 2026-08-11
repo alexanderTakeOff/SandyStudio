@@ -8,10 +8,22 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { defineTool } from './_tool';
-import { traceInStudio } from './_asset';
+import { traceInStudio, shotFromFilename } from './_asset';
+import { sb } from './_env';
+import { buildStitchEdl } from '../../lib/api/stitch-edl';
 
 function ff(args: string[]): void {
   execFileSync('ffmpeg', ['-v', 'error', '-y', ...args], { stdio: ['ignore', 'inherit', 'inherit'] });
+}
+
+/** Ключ кадра из чего угодно: `S20-E06-SH07` → `sh07`, `07.mp4` → `sh07`, `sh7` → `sh07`.
+ *  Прямой путь называет нарезку просто номерами, монтажный лист — полными id кадров;
+ *  без общей нормализации обрезки молча не находятся (поймано живым прогоном 11.08). */
+function shotKey(s: string): string | null {
+  const viaHelper = shotFromFilename(s);
+  if (viaHelper) return `sh${viaHelper.replace(/^sh/i, '').padStart(2, '0')}`;
+  const m = /(\d{1,3})(?!.*\d)/.exec(s);
+  return m ? `sh${m[1].padStart(2, '0')}` : null;
 }
 
 function durationOf(file: string): number {
@@ -26,8 +38,11 @@ export default defineTool(
     name: 'stitch',
     summary: 'Собирает кат: клипы по порядку, один энкод на всех, короткий чёрный хвост. $0.',
     args: {
-      dir: { about: 'папка с клипами; каждый файл — `<имя>.mp4`' },
-      order: { about: 'порядок клипов через запятую, без расширения: `sh01,sh02,...`' },
+      // Пусто — источник берётся из МОНТАЖНОГО ЛИСТА аниматика: исходные клипы,
+      // порядок и обрезки Директора. Ручные `--dir/--order` остаются аварийным
+      // режимом для случая, когда листа нет или он не годится.
+      dir: { about: 'папка с готовой нарезкой (аварийный ручной режим); пусто — клипы из аниматика', default: '' },
+      order: { about: 'порядок файлов в --dir через запятую; пусто — порядок из аниматика', default: '' },
       out: { about: 'куда положить кат' },
       tail: { about: 'длина чёрного хвоста в секундах', default: '1.0' },
       version: { about: 'версия ката в студии', default: 'v01' },
@@ -41,20 +56,71 @@ export default defineTool(
     stations: ['final_cut'],
   },
   async ({ arg, env }) => {
-    const dir = resolve(process.cwd(), arg('dir'));
+    const dirArg = arg('dir');
     const order = arg('order').split(',').map((s) => s.trim()).filter(Boolean);
     const out = resolve(process.cwd(), arg('out'));
     const tail = Number(arg('tail'));
+    const manualMode = Boolean(dirArg) && order.length > 0;
 
-    const parts: string[] = [];
-    for (const name of order) {
-      const p = join(dir, `${name}.mp4`);
-      if (!existsSync(p)) throw new Error(`missing clip: ${p}`);
-      parts.push(p);
-      console.log(`${name}: ${durationOf(p).toFixed(1)}s`);
+    // ОБРЕЗКИ ДИРЕКТОРА ИЗ АНИМАТИКА (11.08). Инструмент клеил файлы ЦЕЛИКОМ и в
+    // базу за монтажным листом не ходил вовсе — поэтому правки, сделанные в
+    // аниматике (длительность кадра, обрезка головы, удаление кадра), в кат не
+    // попадали. Расхождение копится и вылезает на последних кадрах: 10.08 седьмой
+    // кадр E06 разошёлся на несколько десятых.
+    //
+    // Монтажный лист строит общая функция — ТА ЖЕ, что у агентского сборщика
+    // (`lib/api/stitch-edl.ts`), иначе два пути снова разойдутся в арифметике.
+    // Файлы при этом берём локальные (`--dir`): у прямого пути своя нарезка,
+    // сопоставляем её с листом по номеру кадра.
+    const parts: Array<{ path: string; inpoint?: number; outpoint?: number }> = [];
+    let orderForTrace: string[] = [];
+
+    if (manualMode) {
+      // АВАРИЙНЫЙ РЕЖИМ. Файлы в --dir — чужая нарезка: она УЖЕ обрезана, и класть
+      // на неё обрезки из аниматика нельзя (проверено 11.08: кадр 07 попросил 11с
+      // там, где в файле 9.5 — двойная обрезка). Поэтому здесь клеим целиком и
+      // говорим об этом вслух.
+      console.warn('⚠ ручной режим (--dir/--order): обрезки Директора НЕ применяются — файлы клеятся целиком');
+      const dir = resolve(process.cwd(), dirArg);
+      for (const name of order) {
+        const p = join(dir, `${name}.mp4`);
+        if (!existsSync(p)) throw new Error(`missing clip: ${p}`);
+        parts.push({ path: p });
+        console.log(`${name}: ${durationOf(p).toFixed(1)}s`);
+      }
+      orderForTrace = order;
+    } else {
+      // ШТАТНЫЙ РЕЖИМ: источник — монтажный лист аниматика. Исходные клипы, порядок
+      // Директора и его обрезки; удалённые кадры не попадают в кат по построению.
+      const edl = await buildStitchEdl(sb as never, env('RUN_EPISODE_ID'));
+      if (edl.missing.length > 0) {
+        throw new Error(`нет APPROVED-клипа для кадров: ${edl.missing.join(', ')}`);
+      }
+      console.log(
+        `монтажный лист аниматика: ${edl.orderedShots.length} кадров` +
+          (edl.excludedShots.length ? ` · исключены Директором: ${edl.excludedShots.join(', ')}` : ''),
+      );
+      for (const s of edl.orderedShots) {
+        const src = s.stagingPath ?? s.url;
+        if (!src) throw new Error(`у кадра ${s.shotId} нет файла ни на диске, ни по ссылке`);
+        if (s.stagingPath && !existsSync(s.stagingPath)) {
+          throw new Error(`кадр ${s.shotId}: файл не найден на диске — ${s.stagingPath}`);
+        }
+        const raw = existsSync(src) ? durationOf(src) : NaN;
+        parts.push({
+          path: src,
+          inpoint: s.inpointSeconds > 0 ? s.inpointSeconds : undefined,
+          outpoint: s.inpointSeconds + s.durationSeconds,
+        });
+        console.log(
+          `${s.shotId}: ${Number.isFinite(raw) ? raw.toFixed(1) + 's' : 'исходник'} → ${s.durationSeconds.toFixed(1)}s` +
+            (s.inpointSeconds > 0 ? ` (голова ${s.inpointSeconds.toFixed(1)}s)` : ''),
+        );
+      }
+      orderForTrace = edl.orderedShots.map((s) => s.shotId);
     }
 
-    const work = join(dir, '_work');
+    const work = join(dirname(out), '_work');
     mkdirSync(work, { recursive: true });
 
     // Black tail, built to match the clips' geometry and frame rate exactly.
@@ -63,10 +129,21 @@ export default defineTool(
       '-f', 'lavfi', '-i', `color=c=black:s=720x1280:r=24:d=${tail}`,
       '-c:v', 'libx264', '-pix_fmt', 'yuv420p', tailPath,
     ]);
-    parts.push(tailPath);
+    parts.push({ path: tailPath });
 
     const listPath = join(work, 'list.txt');
-    writeFileSync(listPath, parts.map((p) => `file '${p.replace(/\\/g, '/')}'`).join('\n'));
+    // Формат concat-демуксера: inpoint/outpoint идут ПОСЛЕ своей строки `file`.
+    writeFileSync(
+      listPath,
+      parts
+        .map((p) => {
+          const lines = [`file '${p.path.replace(/\\/g, '/')}'`];
+          if (p.inpoint !== undefined) lines.push(`inpoint ${p.inpoint.toFixed(3)}`);
+          if (p.outpoint !== undefined) lines.push(`outpoint ${p.outpoint.toFixed(3)}`);
+          return lines.join('\n');
+        })
+        .join('\n'),
+    );
 
     mkdirSync(dirname(out), { recursive: true });
     // Re-encode rather than stream-copy: the clips come back from the provider with
@@ -92,7 +169,7 @@ export default defineTool(
       episodeId: env('RUN_EPISODE_ID'),
       kind: 'cut',
       file: arg('out'),
-      description: `кат ${arg('version')} · ${total.toFixed(1)} с · порядок: ${order.join(', ')}`,
+      description: `кат ${arg('version')} · ${total.toFixed(1)} с · порядок: ${orderForTrace.join(', ')}`,
       origin: 'stitch',
     });
   },
