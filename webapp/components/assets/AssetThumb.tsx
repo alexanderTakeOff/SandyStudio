@@ -13,6 +13,7 @@ import type { AssetMetadataDoc } from '@/lib/api/series-bible';
 import { NotificationDot } from '@/components/notifications/NotificationDot';
 import { withThumbParam } from '@/lib/media-thumb';
 import { driveBackedMediaUrl, previewFreshness } from '@/lib/asset-preview-resolver';
+import { currentPromptEntry as pickCurrentPromptEntry } from '@/lib/asset-preview-resolver';
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'var(--accent-info)',
@@ -66,7 +67,7 @@ function pickPreviewSrc(a: AssetThumbProps['asset']): string | null {
   const route = driveBackedMediaUrl(a, previewFreshness(a));
   if (route) return route;
   const promptDoc = a.metadata?.image_prompt;
-  const currentEntry = promptDoc?.history.find((h) => h.version === promptDoc.current_version);
+  const currentEntry = pickCurrentPromptEntry(promptDoc);
   const candidates: Array<string | null | undefined> = [
     a.drive_path,
     a.staging_path,

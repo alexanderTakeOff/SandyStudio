@@ -18,6 +18,7 @@
 
 import { withThumbParam } from '@/lib/media-thumb';
 import { driveBackedMediaUrl, previewFreshness } from '@/lib/asset-preview-resolver';
+import { currentPromptEntry as pickCurrentPromptEntry } from '@/lib/asset-preview-resolver';
 import type {
   EREFReview,
   EREFReviewIssue,
@@ -35,6 +36,25 @@ interface TestPlanCardProps {
 
 export function TestPlanCard({ shotRef }: TestPlanCardProps) {
   const { test_plan: tp, shot_id, shot_role } = shotRef;
+  // План теста есть НЕ у каждого изделия с контрактом v2: кадр, зарегистрированный
+  // прямым путём (`scripts/run/_asset.ts`, рука ума), несёт `shot_reference` без
+  // `test_plan` — его строит только дизайнер рефов. До этой правки карточка читала
+  // `tp.characters` и роняла ВЕСЬ дровер: Директор видел страницу ошибки и вылетал
+  // из эпизода, потому что error boundary в студии не было ни одного (10.08).
+  // Ужесточать `isShotReferenceV2` нельзя — на нём висят демоушен слота и латч
+  // видео; правильное место защиты — здесь, как уже сделано в VerdictPill и ScoreBars.
+  if (!tp) {
+    return (
+      <div
+        className="rounded-lg border border-glass p-3 text-[11px] text-text-muted"
+        style={{ background: 'color-mix(in oklab, var(--bg-elevated) 80%, transparent)' }}
+      >
+        <div className="text-xs uppercase tracking-wider mb-1">Test plan</div>
+        Плана теста нет — кадр заведён прямым путём, без дизайнера рефов
+        {shot_id ? ` (${shot_id})` : ''}.
+      </div>
+    );
+  }
   return (
     <div
       className="rounded-lg border border-glass p-3 space-y-3"
@@ -331,7 +351,7 @@ function pickPreview(a: CandidateAsset): string | null {
   const route = driveBackedMediaUrl(a, previewFreshness(a));
   if (route) return route;
   const ip = a.metadata?.image_prompt;
-  const cur = ip?.history.find((h) => h.version === ip.current_version);
+  const cur = pickCurrentPromptEntry(ip);
   const cands: Array<string | null | undefined> = [
     a.drive_path,
     a.staging_path,

@@ -30,6 +30,7 @@ import { AssetProvenanceChip } from '@/components/assets/AssetProvenanceChip';
 import { AssetImagePromptSection } from '@/components/assets/AssetImagePromptSection';
 import type { BibleAsset, ImagePromptHistoryEntry, SbSection } from '@/lib/api/series-bible';
 import { resolvePreviewSrc } from '@/lib/asset-preview-resolver';
+import { currentPromptEntry as pickCurrentPromptEntry } from '@/lib/asset-preview-resolver';
 
 const EDITABLE_STATUSES = new Set(['DRAFT', 'REVIEW', 'REVISION']);
 
@@ -139,9 +140,8 @@ export function AssetDetailDrawer({
 
   const editable = EDITABLE_STATUSES.has(asset.status);
   const promptDoc = asset.metadata?.image_prompt;
-  const currentPromptEntry: ImagePromptHistoryEntry | undefined = promptDoc
-    ? promptDoc.history.find((h) => h.version === promptDoc.current_version)
-    : undefined;
+  const currentPromptEntry: ImagePromptHistoryEntry | undefined =
+    pickCurrentPromptEntry<ImagePromptHistoryEntry>(promptDoc) ?? undefined;
 
   // Pick first browser-loadable URL via the shared resolver (legacy assets may
   // store OS-specific abs paths in staging_path; fall through to drive_path/history).
