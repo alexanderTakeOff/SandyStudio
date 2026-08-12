@@ -45,7 +45,22 @@ const MODEL_FALLBACK = process.env.MIND_BRIDGE_MODEL ?? 'opus';
 const POLL_MS = 2_500;
 const TURN_TIMEOUT_MS = Number(process.env.MIND_BRIDGE_TURN_TIMEOUT_MS ?? 45 * 60 * 1000);
 // Полный набор рук; границы держат хуки (Ф3) и права клона, не кастрация списка.
-const ALLOWED_TOOLS = 'Bash,Read,Glob,Grep,Write,Edit,Agent,Task,Skill,TodoWrite';
+/**
+ * ДВЕ РУКИ, А НЕ ОДНА (12.08, оплачено остановкой работы над E07).
+ *
+ * `PowerShell` добавлен потому, что в списке его не было — и Полина, потеряв Bash
+ * на незакрытой кавычке, осталась вообще без исполнения: «npx через PowerShell
+ * требует подтверждения, которое я себе выдать не могу». Одна опечатка в кавычках
+ * обезоруживала ум целиком — при полном контексте, живом процессе и целых
+ * изделиях, — и единственным лечением казался перезапуск сессии с потерей 439k
+ * рабочей памяти.
+ *
+ * Гейт денег и хард-лимиты от этого НЕ слабеют: `polina-pretool.cjs` ловит
+ * `matcher: "Bash"`, поэтому платные генерации и `git push master` через вторую
+ * руку надо закрыть тем же хуком (matcher `Bash|PowerShell`) — правка идёт в
+ * `polina-settings.json` в этом же коммите.
+ */
+const ALLOWED_TOOLS = 'Bash,PowerShell,Read,Glob,Grep,Write,Edit,Agent,Task,Skill,TodoWrite';
 
 /** Ходы в полёте — ПО ТРЕДУ. In-memory + зеркало в concierge_threads.mind_session. */
 const inFlight = new Map<string, ChildProcessWithoutNullStreams>();

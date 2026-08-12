@@ -17,7 +17,10 @@ process.stdin.on('end', () => {
   } catch {
     process.exit(0);
   }
-  if (input.tool_name !== 'Bash') process.exit(0);
+  // Обе руки, а не одна: с 12.08 уму разрешён и PowerShell (Bash умирал на
+  // незакрытой кавычке и оставлял его без исполнения вовсе). Хард-лимиты обязаны
+  // держать ОБА инструмента — иначе вторая рука была бы дырой в гейте денег.
+  if (input.tool_name !== 'Bash' && input.tool_name !== 'PowerShell') process.exit(0);
   const cmd = String(input.tool_input?.command ?? '');
 
   if (/scripts[\\/]run[\\/]publish(\.ts)?\b/.test(cmd)) {
