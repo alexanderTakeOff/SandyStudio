@@ -40,7 +40,8 @@ const ROLE_FILE = resolve(CLONE_WEBAPP, 'roles', 'polina.md');
 // НЕ settings.json репо (его делят сессии Тео) — отдельный файл Полины,
 // подаётся явно (--settings — иначе хуки в headless не грузятся, Ш54).
 const SETTINGS_FILE = resolve(CLONE_DIR, '.claude', 'polina-settings.json');
-const MODEL = process.env.MIND_BRIDGE_MODEL ?? 'opus';
+/** Фолбэк, когда в настройках студии выбора нет. Не «настройка», а последнее слово. */
+const MODEL_FALLBACK = process.env.MIND_BRIDGE_MODEL ?? 'opus';
 const POLL_MS = 2_500;
 const TURN_TIMEOUT_MS = Number(process.env.MIND_BRIDGE_TURN_TIMEOUT_MS ?? 45 * 60 * 1000);
 // Полный набор рук; границы держат хуки (Ф3) и права клона, не кастрация списка.
@@ -91,6 +92,38 @@ function log(msg: string): void {
   console.log(`[bridge ${new Date().toISOString().slice(11, 19)}] ${msg}`);
 }
 
+/**
+ * МОДЕЛЬ УМА — из НАСТРОЕК СТУДИИ, а не из env (закон Директора: «провайдеры
+ * меняются через Studio Settings»). Читается ПЕРЕД КАЖДЫМ ходом: выбор в UI
+ * действует со следующего сообщения, без перезапуска моста и пересборки.
+ *
+ * Мост исполняет только строки провайдера `claude-code` — алиасы подписки. Если
+ * в настройке выбран API-провайдер (OpenAI/Anthropic-по-ключу), это НЕ его путь:
+ * берём фолбэк и говорим об этом в лог, потому что молча пойти чужой моделью —
+ * тот самый тихий отказ, который дороже громкого.
+ */
+async function resolveModel(): Promise<string> {
+  try {
+    const { data } = await sb
+      .from('app_config')
+      .select('value')
+      .eq('scope', 'providers')
+      .eq('key', 'concierge_provider')
+      .maybeSingle();
+    const v = ((data as { value?: unknown } | null)?.value ?? {}) as {
+      provider?: string;
+      model?: string;
+    };
+    if (v.provider === 'claude-code' && v.model) return v.model;
+    if (v.provider) {
+      log(`настройка студии просит ${v.provider}/${v.model ?? '?'} — это API-путь, мост его не ведёт; иду на ${MODEL_FALLBACK}`);
+    }
+  } catch (e) {
+    log(`настройку модели прочитать не вышло (${e instanceof Error ? e.message : e}) — фолбэк ${MODEL_FALLBACK}`);
+  }
+  return MODEL_FALLBACK;
+}
+
 // СЕССИЯ ЖИВЁТ НА ТРЕДЕ (0057). Раньше карта лежала в `episodes.metadata`, и это
 // привязывало ум к одной сущности: студийные и сериальные разговоры вести было
 // негде. Тред уже знает свою сущность, поэтому сессия следует за ней сама.
@@ -122,12 +155,13 @@ async function runTurn(args: {
   tab: string | null;
 }): Promise<void> {
   const mind = await readMindSession(args.threadId);
+  const model = await resolveModel();
 
   const cli: string[] = [
     '-p',
     '--output-format', 'stream-json',
     '--verbose',
-    '--model', MODEL,
+    '--model', model,
     '--allowedTools', ALLOWED_TOOLS,
     '--append-system-prompt-file', ROLE_FILE,
   ];
@@ -162,6 +196,8 @@ async function runTurn(args: {
   inFlight.set(args.threadId, child);
   await writeMindSession(args.threadId, {
     busy: { pid: child.pid ?? -1, turn_ids: args.turnIds, started_at: new Date().toISOString() },
+    // Шапка чата показывает ИСПОЛНЕННОЕ, а не выбранное в настройке.
+    model,
   });
 
   // ОБСТАНОВКА (12.08): вкладка — параметр внутри сессии, а не своя сессия
@@ -295,7 +331,7 @@ async function runTurn(args: {
         series_id: args.seriesId,
         agent_id: 'POLINA-MIND',
         api_provider: 'anthropic',
-        model_or_tier: `${MODEL}/subscription-estimate`,
+        model_or_tier: `${model}/subscription-estimate`,
         operation: 'mind-turn',
         cost_usd: cost,
         duration_ms: typeof resultMeta.duration_ms === 'number' ? resultMeta.duration_ms : null,
@@ -452,7 +488,10 @@ async function main(): Promise<void> {
       await writeMindSession(t.id, { busy: null });
     }
   }
-  log(`мост запущен · клон=${CLONE_WEBAPP} · модель=${MODEL} · опрос ${POLL_MS}мс`);
+  log(
+    `мост запущен · клон=${CLONE_WEBAPP} · модель берётся из настроек студии ` +
+      `(фолбэк ${MODEL_FALLBACK}) · опрос ${POLL_MS}мс`,
+  );
   for (;;) {
     try {
       await pollOnce();

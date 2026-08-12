@@ -42,6 +42,15 @@ export interface ConciergeProviderOption extends ConciergeProviderChoice {
 // justified new list, not a duplicate. Keep model ids in sync with what
 // lib/concierge/llm.ts + createConciergeClient support (openai/anthropic/gemini).
 export const CONCIERGE_PROVIDER_CATALOG: ConciergeProviderOption[] = [
+  // ── ХАРНЕС (то, чем Полина работает СЕЙЧАС) ───────────────────────────────
+  // Ходы ведёт мост через `claude -p` по ПОДПИСКЕ: API-ключ в окружение хода не
+  // передаётся вовсе. Модель называется АЛИАСОМ (`opus` / `sonnet`) — его
+  // разворачивает подписка, поэтому смена поколения у провайдера не ломает
+  // настройку. `envKey` тут пустой: ключа этот путь не требует по построению.
+  // Строки API ниже сохранены сознательно (Директор 12.08: «кто знает, когда
+  // Антропик передумает») — но сегодня их не исполняет никто.
+  { id: 'claude-code:opus', provider: 'claude-code', model: 'opus', display_name: 'Подписка · Opus (claude-opus-5, окно 1M)', envKey: '' },
+  { id: 'claude-code:sonnet', provider: 'claude-code', model: 'sonnet', display_name: 'Подписка · Sonnet (claude-sonnet-5, окно 1M)', envKey: '' },
   { id: 'openai:gpt-5.5', provider: 'openai', model: 'gpt-5.5', display_name: 'OpenAI · gpt-5.5', envKey: 'OPENAI_API_KEY' },
   { id: 'openai:gpt-5.4-mini', provider: 'openai', model: 'gpt-5.4-mini', display_name: 'OpenAI · gpt-5.4-mini', envKey: 'OPENAI_API_KEY' },
   // GPT-5.6 frontier tiers (developers.openai.com/api/docs/models): sol =

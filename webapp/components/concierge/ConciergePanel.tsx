@@ -425,13 +425,20 @@ export function ConciergePanel() {
   // Re-callable so the badge SELF-CORRECTS after an on-the-fly provider switch —
   // the mount-only fetch left the label stale (e.g. "OpenAI · gpt-5.5") after the
   // Director switched Polina to Sonnet 5. Called on mount AND after each turn.
+  // 12.08 — метка модели вернулась из мёртвого источника в живой. GET
+  // /api/concierge/chat снесён на Ф6, поэтому шапка молчала: Директор не видел,
+  // на чём работает Полина. Берём ВЫБРАННОЕ в Studio Settings
+  // (/api/providers/concierge, Director-only); исполненное перебьёт его ниже —
+  // мост пишет модель хода в mind_session, и она главнее выбора.
   const refreshStatus = useCallback(async () => {
     try {
-      const r = await fetch('/api/concierge/chat');
+      const r = await fetch('/api/providers/concierge');
       if (!r.ok) return;
-      const d = await r.json();
-      if (d?.label) setModelLabel(d.label as string);
-      if (typeof d?.autoReact === 'boolean') setAutoReact(d.autoReact);
+      const d = (await r.json()) as { data?: { active_id?: string; options?: Array<{ id: string; display_name: string }> } };
+      const activeId = d.data?.active_id;
+      const opt = d.data?.options?.find((o) => o.id === activeId);
+      if (opt) setModelLabel(opt.display_name);
+      else if (activeId) setModelLabel(activeId);
     } catch {
       // non-fatal — keep the last known label
     }
@@ -996,8 +1003,13 @@ export function ConciergePanel() {
           busy?: { started_at?: string } | null;
           context_tokens?: number;
           context_limit?: number;
+          model?: string;
         };
         setTurnBusySince(mind.busy?.started_at ?? null);
+        // ИСПОЛНЕННОЕ главнее выбранного: показываем модель последнего хода.
+        if (typeof mind.model === 'string' && mind.model) {
+          setModelLabel(`Подписка · ${mind.model}`);
+        }
         setContextTokens(typeof mind.context_tokens === 'number' ? mind.context_tokens : null);
         if (typeof mind.context_limit === 'number' && mind.context_limit > 0) {
           setContextLimit(mind.context_limit);

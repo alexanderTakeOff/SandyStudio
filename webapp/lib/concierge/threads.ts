@@ -324,6 +324,12 @@ export interface MindSessionMap {
   busy?: { pid: number; turn_ids: string[]; started_at: string } | null;
   context_tokens?: number | null;
   context_limit?: number | null;
+  /**
+   * Модель, которой ФАКТИЧЕСКИ шёл последний ход (алиас подписки). Пишет мост.
+   * Шапка чата обязана показывать исполненное, а не выбранное: расхождение
+   * между настройкой и реальностью уже стоило ложной тревоги 08.08.
+   */
+  model?: string | null;
   updated_at?: string;
 }
 

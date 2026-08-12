@@ -348,6 +348,19 @@ Director's directive 2026-05-06 (correcting earlier "always run smoke" instructi
 7. **PATH ALIASES ONLY** — No raw paths in code. Use `STORAGE.MEDIA_ROOT`, `STORAGE.PROJECT_ROOT`.
 8. **PARAMETER COMPLETENESS AT GATE** — All parameters an execution agent needs MUST be fully defined by upstream inputs before that agent is triggered. Execution agents (EXEC-*) are pure functions: `output = f(inputs)`. An execution agent encountering an undefined parameter = upstream gate failure.
 
+9. **ПРОВАЙДЕРЫ И МОДЕЛИ — ТОЛЬКО ЧЕРЕЗ STUDIO SETTINGS** (Директор, 2026-08-08, повторно
+   12.08). Выбор провайдера/модели живёт в `app_config` и меняется в UI, действуя на лету;
+   `.env` держит ФОЛБЭК на случай пустой настройки — и никогда не является местом выбора.
+   Любой новый исполнитель (роут, демон, мост) обязан читать настройку, а не свою env-переменную.
+   Исполнитель, которому настройка не подходит, обязан сказать это ГРОМКО (лог/ошибка), а не
+   молча уйти на своё значение.
+
+   **Почему правилом, а не памятью.** Закон был записан комментарием внутри `.env.local` —
+   в файле, куда за законами не ходят, и без единого сторожа. Мост Полины, построенный позже,
+   спокойно проехал мимо: панель настроек показывала выбор, который ни на что не влиял, а
+   сессия 12.08 предложила Директору «поправить env». Сторож теперь есть —
+   `__tests__/lib/mind-model-source.test.ts`; правило без сторожа не считается записанным.
+
 **Responsibility chain (Rule 8):**
 
 | Parameter type      | Must be defined in          |

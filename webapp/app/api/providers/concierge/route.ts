@@ -26,7 +26,10 @@ import { conciergeProvider, conciergeModel } from '@/lib/concierge/llm';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+// Пустой envKey = путь ключа НЕ требует (харнес ходит по подписке) — такая
+// строка здорова по построению, и «no key» рядом с ней было бы ложью.
 function envPresent(key: string): boolean {
+  if (!key) return true;
   return !!process.env[key]?.trim();
 }
 
@@ -47,7 +50,7 @@ export const GET = withApiHandler(async () => {
 
 const Body = z
   .object({
-    provider: z.enum(['openai', 'gemini', 'anthropic']),
+    provider: z.enum(['openai', 'gemini', 'anthropic', 'claude-code']),
     model: z.string().min(1).max(120),
   })
   .strict();
