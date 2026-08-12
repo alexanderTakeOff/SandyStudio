@@ -8,20 +8,17 @@
 // Конструкция стоит на том, что уже построено, и НЕ заводит своих механизмов:
 //   вход  — `persistTurn` в тот же тред, что у `mind-say.ts`; мост подхватывает
 //           строку с `metadata.for_bridge` и ведёт ход. Бот про мост не знает.
-//   медиа — `registerEpisodeMedia` (перо генераторов) на вход, `ensureCachedMedia`
-//           на выход. Файл без строки в студии для конвейера не существует (§8-тер).
+//   медиа — на выход `ensureCachedMedia`; на вход пульт НЕ сортирует ничего:
+//           файл ложится рядом с прогоном, а чем ему стать — решает ум (см. ниже).
 //   кнопки — формат нумерованных вопросов Директора: `callback_data` это код
 //           `<NN><цифра>`, который он набрал бы руками. См. lib/telegram/questions.ts.
 //
 // Связь исходящая (long polling) — портов наружу не открываем.
 //
 //   npx tsx scripts/telegram-bot.ts
-import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
 import { sb } from './run/_env';
-import { registerEpisodeMedia, type MediaKind as StudioMediaKind } from './run/_asset';
 import { createThread, persistTurn, resolveOpenThreadId } from '../lib/concierge/threads';
 import { ensureCachedMedia } from '../lib/media-cache';
 import { keyboardForText } from '../lib/telegram/questions';
@@ -136,24 +133,6 @@ function tgKindFor(filename: string): 'photo' | 'video' | 'audio' | 'document' {
   return 'document';
 }
 
-/**
- * Назначение входящего файла читается из ПОДПИСИ, и молчаливого умолчания нет:
- * положить кадр не в тот слот дороже, чем переспросить.
- *   `sh03`            — кадр или клип третьего шота
- *   `канон <слаг>`    — плита канона серии
- *   `музыка`          — трек эпизода
- */
-function intentFrom(caption: string): { kind: StudioMediaKind; shot?: string } | { canon: string } | null {
-  const c = caption.trim().toLowerCase();
-  const canon = /^(канон|canon)\s+([a-z0-9_]+)/.exec(c);
-  if (canon) return { canon: canon[2] };
-  if (/^(музыка|music|трек)\b/.test(c)) return { kind: 'music' };
-  if (/^(кат|cut|финал)\b/.test(c)) return { kind: 'cut' };
-  const shot = /\bsh0*(\d{1,2})\b/.exec(c);
-  if (shot) return { kind: 'frame', shot: `sh${shot[1].padStart(2, '0')}` };
-  return null;
-}
-
 function fileRefOf(msg: TgMessage): { fileId: string; name: string } | null {
   if (msg.photo?.length) {
     const biggest = msg.photo[msg.photo.length - 1];
@@ -171,21 +150,22 @@ function fileRefOf(msg: TgMessage): { fileId: string; name: string } | null {
   return null;
 }
 
-/** Канон заводится СУЩЕСТВУЮЩИМ инструментом — его правила имени и версии не дублируются. */
-function runCanonTool(slug: string, file: string, desc: string, seriesId: string): Promise<string> {
-  return new Promise((done, fail) => {
-    const p = spawn(
-      process.platform === 'win32' ? 'npx.cmd' : 'npx',
-      ['tsx', 'scripts/run/register-canon.ts', '--slug', slug, '--file', file, ...(desc ? ['--desc', desc] : [])],
-      { cwd: process.cwd(), env: { ...process.env, RUN_SERIES_ID: seriesId } },
-    );
-    let out = '';
-    p.stdout.on('data', (d) => (out += String(d)));
-    p.stderr.on('data', (d) => (out += String(d)));
-    p.on('close', (code) => (code === 0 ? done(out.trim()) : fail(new Error(out.trim() || `код ${code}`))));
-  });
-}
-
+/**
+ * ВХОДЯЩЕЕ МЕДИА ПУЛЬТ НЕ СОРТИРУЕТ (Директор, 12.08).
+ *
+ * Первая версия требовала подписи-кода: `sh03`, `канон <слаг>`, `музыка`, `кат` —
+ * и отказывала, если не поняла. Директор снял это одной фразой: «идея, что я буду
+ * их нумеровать и подписывать, обречена — наверняка будут ошибки. Лучше просто
+ * пояснить, что это к чему, а она сама, основываясь на коде и правилах, оформит
+ * как положено. Это же ассистент, а не наоборот».
+ *
+ * Он прав по механизму, а не только по удобству: слот, категорию и слаг диктуют
+ * КОД И ПРАВИЛА студии, а знает их Полина, а не человек с телефона. Пульт, который
+ * решал за неё, требовал от Директора помнить чужой синтаксис и превращал каждую
+ * опечатку в изделие не в том слоте. Поэтому здесь не осталось ни одной ветки
+ * разбора: файл ложится рядом с прогоном, путь и подпись ДОСЛОВНО уезжают в
+ * разговор, а чем этому файлу стать — решает ум своими перьями.
+ */
 async function handleIncomingMedia(state: BotState, msg: TgMessage, chatId: number): Promise<void> {
   const ref = fileRefOf(msg);
   if (!ref) return;
@@ -193,48 +173,31 @@ async function handleIncomingMedia(state: BotState, msg: TgMessage, chatId: numb
     await sendMessage(chatId, 'Сначала выбери эпизод: /e SS-S20-E07');
     return;
   }
-  const caption = msg.caption ?? '';
-  const intent = intentFrom(caption);
-  if (!intent) {
-    await sendMessage(
-      chatId,
-      'Не понял, куда класть. Подпиши файл:\n' +
-        '· `sh03` — кадр или клип шота\n' +
-        '· `канон <слаг>` — плита канона серии\n' +
-        '· `музыка` — трек эпизода\n' +
-        '· `кат` — финальная сборка\n\n' +
-        'Файл не потерян — пришли его ещё раз с подписью.',
-    );
-    return;
-  }
 
-  const path = await getFilePath(ref.fileId);
-  const bytes = await downloadFile(path);
-  const local = resolve(tmpdir(), `tg-${Date.now()}-${ref.name.replace(/[^\w.-]/g, '_')}`);
-  writeFileSync(local, bytes);
+  const bytes = await downloadFile(await getFilePath(ref.fileId));
+  // Имя несёт время: наброски одного дня не должны затирать друг друга.
+  const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+  const ext = ref.name.includes('.') ? ref.name.slice(ref.name.lastIndexOf('.')) : '.bin';
+  const dir = resolve(process.cwd(), '..', 'FILMS', '_run', 'inbox');
+  mkdirSync(dir, { recursive: true });
+  const dest = resolve(dir, `tg-${stamp}${ext}`);
+  writeFileSync(dest, bytes);
 
-  if ('canon' in intent) {
-    const { data: ep } = await sb.from('episodes').select('series_id').eq('id', state.episodeId).maybeSingle();
-    const out = await runCanonTool(intent.canon, local, caption.replace(/^\S+\s+\S+\s*/, ''), (ep as { series_id: string }).series_id);
-    await sendMessage(chatId, `Плита канона ${intent.canon} заведена.\n${out.slice(0, 500)}`);
-    await sayToMind(state, `Директор прислал плиту канона \`${intent.canon}\` (телеграм).`);
-    return;
-  }
-
-  // Клип отличается от кадра не подписью, а расширением — подпись говорит про СЛОТ.
-  const kind: StudioMediaKind =
-    intent.kind === 'frame' && VIDEO_EXT.test(ref.name) ? 'clip' : intent.kind;
-  const res = await registerEpisodeMedia({
-    episodeId: state.episodeId,
-    kind,
-    file: local,
-    shot: intent.shot,
-    status: 'REVIEW',
-    description: caption || 'прислано Директором в телеграме',
-    origin: 'telegram',
-  });
-  await sendMessage(chatId, `Завёл в студию: ${res.filename}\nasset ${res.id}`);
-  await sayToMind(state, `Директор прислал ${kind} — asset \`${res.id}\` (${res.filename}). Подпись: ${caption || '—'}`);
+  const caption = (msg.caption ?? '').trim();
+  const said = await sayToMind(
+    state,
+    `Директор прислал файл из телеграма.\n` +
+      `Файл: ${dest}\n` +
+      (caption ? `Его слова: «${caption}»\n` : 'Без подписи.\n') +
+      `Посмотри его сама (Read по этому пути) и реши, чем он должен стать: идеей к обсуждению, ` +
+      `референсом, плитой канона, кадром шота, треком. Оформляй штатным инструментом по правилам ` +
+      `студии — имя, слот, версию и статус выбираешь ты, Директор их знать не обязан. ` +
+      `Если из файла и слов не ясно, к чему он, — спроси одной строкой.`,
+  );
+  await sendMessage(
+    chatId,
+    said ? 'Принял, отдал Полине — посмотрит и оформит.' : 'Эпизод не выбран: /e SS-S20-E07',
+  );
 }
 
 // ─────────────────── студия → телеграм ───────────────────
@@ -295,7 +258,9 @@ const HELP = [
   '/стоп — оборвать залипший ход',
   '',
   'Текст без команды уходит Полине. Кнопки под её ответом — это твои коды ответов.',
-  'Медиа: пришли файл с подписью `sh03`, `канон <слаг>`, `музыка` или `кат`.',
+  '',
+  'Медиа: шли что угодно — набросок стилусом, фото, скриншот, видео, трек.',
+  'Кодов и подписей-слагов не надо: скажи словами, что это и к чему, а оформит Полина.',
 ].join('\n');
 
 async function handleCommand(state: BotState, chatId: number, text: string): Promise<boolean> {
