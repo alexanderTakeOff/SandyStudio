@@ -204,6 +204,44 @@ parseable JSON code block». Запускал не ум — сработал с�
 это записывается в контракт `write-asset`, а не остаётся негласным ожиданием исполнителя.
 Отдельно: исполнитель обязан брать САМУЮ СВЕЖУЮ APPROVED-версию, а не первую попавшуюся.
 
+### 15 · Закон нарезки обошли через два исключения — текст правки готов, вставить в скилл
+**12.08 · E07 · `.claude/skills/storyboard-shot-granularity/SKILL.md`**
+Директор о собранном кате: «первый кадр и второй кадр с одного ракурса, фактически без
+изменений, соединение выглядит как будто просто вырезка какая-то… нельзя так делать ни в
+каких историях». Он же: «я где-то уже об этом говорил» — и он прав, закон в скилле СТОИТ с
+31.07. Он не отсутствовал, его обошли двумя исключениями, и обошли письменно, в раскадровке.
+**Полина править файл не может** — харнес блокирует скилл как sensitive.
+
+**Вставить в §«The tests» после теста 4:**
+
+> ### Two ways the three-axis test gets cheated (2026-08-12, Director)
+>
+> **Cheat 1 — «something APPEARS in the frame, so the object of attention changed».**
+> It did not. A new element entering the DEPTH of a static frame — a light in the distance,
+> a shape emerging from the dark — is an **event inside one shot**, not a change of vantage.
+> The audience's eye has not been moved: same thing, same place, one more detail in it.
+> That is the material a merged shot with internal phases is made of. The axis «object of
+> attention» changes when the CAMERA changes what it points at, not when the world produces
+> a new detail in the existing frame.
+>
+> **Cheat 2 — «the merged span exceeds the provider's ceiling, so I must cut».**
+> The ceiling forces a SPLIT; it does not license a split **on the same vantage**. If the
+> material must be divided for technical reasons, the second piece earns its cut the normal
+> way: change the vantage, the scale, or the subject. The audience cannot see the provider's
+> limits — only the seam.
+> Order of operations: merge if the tests say merge → if it does not fit the ceiling,
+> RESTAGE the second piece from a different camera → only then split. Never «same camera,
+> cut in half because 18 seconds is more than 15».
+>
+> **The failure that closed these loopholes (SS-S20-E07, 12.08.2026):** an opening shot of a
+> vehicle travelling away from camera, then the following shot — same vantage, same distance
+> — where a point of light appears far ahead. Both loopholes were used to justify the cut,
+> in writing, in the storyboard. In the assembled cut the join read as a missing piece of
+> film rather than an edit.
+
+**Почему это стоит вставить, а не пересказать:** правило уже один раз проиграло исключениям.
+Пока исключения не названы поимённо, следующий прогон обойдёт его тем же способом.
+
 ### 6 · Спящий фолбэк на порт мастера в OAuth-редиректе
 **12.08 · `webapp/app/api/channels/consent/callback/route.ts:70` и
 `webapp/app/api/channels/[id]/consent/route.ts:46`**
