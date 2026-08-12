@@ -28,6 +28,7 @@ import { VGENBatchPanel } from '@/components/vgen/VGENBatchPanel';
 import { EpisodeTimelineSection } from '@/components/timeline/EpisodeTimelineSection';
 import type { PipelineStageId } from '@/lib/api/pipeline-stages';
 import { agentDisplayName } from '@/lib/api/agent-names';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 import { ActivityEventRow } from '@/components/activity/ActivityEventRow';
 import { fetcher } from '@/lib/swr';
 
@@ -244,6 +245,15 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
     // reflecting it — unnerving when Polina reports a trigger and nothing moves.
     { refreshInterval: 8_000 },
   );
+
+  // КОНТЕКСТ ОПЕРАТОРА: страница сообщает провайдеру серию открытого эпизода —
+  // она уже пришла с этим запросом, и провайдеру не нужно грузить её вторично.
+  // Без этого дропдаун и вкладки продолжали показывать прошлый выбор (12.08).
+  const { adoptEntitySeries } = useWorkspaceScope();
+  const loadedSeriesId = data?.data?.episode?.series_id ?? null;
+  useEffect(() => {
+    adoptEntitySeries(loadedSeriesId);
+  }, [loadedSeriesId, adoptEntitySeries]);
 
   // One-time default-expand: once stages load, open EVERY primary that has muted
   // Designer/Critic children so hidden sub-stages are visible immediately (the

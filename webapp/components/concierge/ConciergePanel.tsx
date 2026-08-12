@@ -22,7 +22,7 @@ import {
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import { usePathname } from 'next/navigation';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 import {
   MessageCircle, Mic, MicOff, Send, Volume2, VolumeX, X, Sparkles, MessageSquarePlus, BrainCircuit,
 } from 'lucide-react';
@@ -368,12 +368,11 @@ export function ConciergePanel() {
   // Default open=true per Director directive 2026-05-25 — page-load lands with
   // PA already expanded. Persisted in localStorage so an explicit close sticks.
   const [open, setOpen] = useState(true);
-  // The episode the Director currently has OPEN (/episodes/<uuid>). Sent with
-  // every chat request so the Prod Assistant FOLLOWS the open episode instead of
-  // staying pinned to whatever episode the thread first bound to. Trusted human
-  // signal — the chat route re-binds the thread to it (2026-06-23).
-  const pathname = usePathname();
-  const openEpisodeId = pathname?.match(/\/episodes\/([^/?#]+)/)?.[1] ?? null;
+  // ЧТО ОТКРЫТО У ДИРЕКТОРА — берётся у ЕДИНСТВЕННОГО держателя контекста
+  // (WorkspaceScopeProvider), а не выводится здесь своим regex'ом по пути.
+  // Свой вывод и был частью класса дефектов «где я»: чат знал только эпизод,
+  // поэтому вне его страницы уходил в снесённый роут и печатал «HTTP 404».
+  const { episodeId: openEpisodeId } = useWorkspaceScope();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);

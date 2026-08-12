@@ -1,20 +1,29 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // components/providers/WorkspaceScopeProvider.tsx
-// Global workspace scope — «какой СЕРИАЛ я сейчас смотрю» (multi-channel Phase 3).
+// КОНТЕКСТ ОПЕРАТОРА — «что у меня открыто прямо сейчас»: студия, сериал или
+// эпизод. ЕДИНСТВЕННЫЙ держатель этого факта; все поверхности (дропдаун, вкладки,
+// чат Полины) его ЧИТАЮТ и ни одна не выводит собственный ответ.
 //
-// Source-of-truth rules (mirrors AppearanceProvider's storage pattern):
-//   • URL `?series_id=` WINS whenever present — re-checked on every route change,
-//     so deep links (/episodes?series_id=…) adopt into the scope and links stay
-//     shareable. Read via window.location (client-only) — deliberately NOT
-//     useSearchParams, which would force Suspense boundaries on static pages.
-//   • Otherwise the last choice persists: in-memory across navigations (this
-//     provider lives in the (studio) layout and never remounts), localStorage
-//     across reloads.
-//   • setSeriesId reflects the choice onto the CURRENT page's URL via
-//     router.replace (default scope = no param, like the series tabs pattern).
+// ЗАКОН: источник контекста — МАРШРУТ (2026-08-12, замечание Директора о
+// рассинхроне дропдауна). До этого в провайдер втекал только `?series_id=`, а
+// сегменты пути — нет: на `/series/<id>` и `/episodes/<id>` он продолжал держать
+// прошлый выбор, дропдаун показывал SS-S20 при открытом SS-S17. Тот же корень
+// давал 404 в чате (он выводил эпизод своим regex'ом) и слепые вкладки.
 //
-// The channel is NOT stored: it is derived (series.channel_id) by the consumers
-// that need it (Audience). Scope null = «вся студия», the pre-Phase-3 behaviour.
+// Правила источника (по убыванию силы):
+//   • СЕГМЕНТ ПУТИ `/series/<uuid>` или `/episodes/<uuid>` — сильнейший: он и есть
+//     то, что оператор открыл.
+//   • URL `?series_id=` — для плоских вкладок и шаримых ссылок; перечитывается на
+//     каждой смене маршрута. Читается через window.location (НЕ useSearchParams —
+//     тот потребовал бы Suspense на статических страницах).
+//   • Иначе последний выбор: в памяти между переходами (провайдер живёт в layout
+//     (studio) и не перемонтируется) и в localStorage между перезагрузками.
+//
+// Серия ОТКРЫТОГО ЭПИЗОДА приходит от самой страницы эпизода через
+// `adoptEntitySeries` — она эти данные и так грузит. Провайдер не делает своего
+// запроса: это была бы вторая загрузка того же факта, а не второй источник истины.
+//
+// Канал не хранится: он выводится (series.channel_id) теми, кому нужен (Audience).
 // ──────────────────────────────────────────────────────────────────────────────
 
 'use client';
@@ -28,21 +37,41 @@ import {
   type ReactNode,
 } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { contextFromPath, UUID_RE, type OperatorContextKind } from '@/lib/operator-context';
 
 const STORAGE_KEY = 'sandystudio.workspace.scope';
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface WorkspaceScope {
   /** null = вся студия (без скоупа). */
   seriesId: string | null;
+  /** Открытый эпизод — только на его странице. */
+  episodeId: string | null;
+  /** Самая узкая открытая сущность. */
+  kind: OperatorContextKind;
+  /** Вкладка сайдбара: первый сегмент пути (`factory`, `audience`, …). */
+  tab: string;
   setSeriesId: (id: string | null) => void;
+  /**
+   * Страница сущности сообщает её серию — она эти данные уже загрузила.
+   * Провайдер остаётся единственным ДЕРЖАТЕЛЕМ контекста; страница лишь
+   * приносит свойство того, что открыто по маршруту.
+   */
+  adoptEntitySeries: (seriesId: string | null) => void;
 }
 
-const Ctx = createContext<WorkspaceScope>({ seriesId: null, setSeriesId: () => {} });
+const Ctx = createContext<WorkspaceScope>({
+  seriesId: null,
+  episodeId: null,
+  kind: 'studio',
+  tab: '',
+  setSeriesId: () => {},
+  adoptEntitySeries: () => {},
+});
 
 export function useWorkspaceScope(): WorkspaceScope {
   return useContext(Ctx);
 }
+
 
 function persist(id: string | null): void {
   try {
@@ -86,10 +115,39 @@ export function WorkspaceScopeProvider({ children }: { children: ReactNode }) {
     }
   }, [pathname]);
 
+  // МАРШРУТ СИЛЬНЕЕ ПАМЯТИ: открытая сущность задаёт скоуп, а не наоборот.
+  // Без этого дропдаун на `/series/<id>` продолжал показывать прошлый выбор.
+  const route = contextFromPath(pathname);
+  useEffect(() => {
+    if (route.seriesIdFromPath && route.seriesIdFromPath !== seriesId) {
+      setState(route.seriesIdFromPath);
+      persist(route.seriesIdFromPath);
+    }
+    // Уход из сущности скоуп НЕ сбрасывает: он остаётся рабочей областью вкладок.
+  }, [route.seriesIdFromPath, seriesId]);
+
+  // Серия открытого эпизода — от страницы, которая её загрузила (см. шапку).
+  const adoptEntitySeries = useCallback(
+    (id: string | null) => {
+      if (!id || !UUID_RE.test(id)) return;
+      setState((prev) => (prev === id ? prev : id));
+      persist(id);
+    },
+    [],
+  );
+
   const setSeriesId = useCallback(
     (id: string | null) => {
       setState(id);
       persist(id);
+      // СО СТРАНИЦЫ СУЩНОСТИ переключение сериала — это НАВИГАЦИЯ, а не смена
+      // фильтра: остаться на чужом эпизоде с новым скоупом значит вернуть тот
+      // самый рассинхрон, ради которого всё это делается (решение Директора 24).
+      const onEntityPage = route.kind !== 'studio';
+      if (onEntityPage) {
+        router.push(id ? `/episodes?series_id=${id}` : '/episodes');
+        return;
+      }
       // Reflect on the current page URL for shareability; default = clean URL.
       try {
         const sp = new URLSearchParams(window.location.search);
@@ -101,8 +159,21 @@ export function WorkspaceScopeProvider({ children }: { children: ReactNode }) {
         /* URL reflection is cosmetic — the state above is the source */
       }
     },
-    [pathname, router],
+    [pathname, router, route.kind],
   );
 
-  return <Ctx.Provider value={{ seriesId, setSeriesId }}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider
+      value={{
+        seriesId,
+        episodeId: route.episodeId,
+        kind: route.episodeId ? 'episode' : seriesId ? 'series' : 'studio',
+        tab: route.tab,
+        setSeriesId,
+        adoptEntitySeries,
+      }}
+    >
+      {children}
+    </Ctx.Provider>
+  );
 }

@@ -243,6 +243,14 @@ export interface UploadVideoInput {
   madeForKids?: boolean;
   /** BCP-47 — sets snippet.defaultLanguage AND defaultAudioLanguage when present. */
   defaultLanguage?: string;
+  /**
+   * ISO-8601 instant at which YouTube flips the video to public on its own.
+   * Scheduling has exactly one shape on YouTube: `private` + `publishAt`. There is no
+   * such thing as a scheduled `unlisted` — unlisted never becomes public by itself.
+   * Passing this with any other privacyStatus is a caller bug, so it throws rather
+   * than silently publishing now (the release procedure is the whole point).
+   */
+  publishAt?: string;
   contentType?: string;
 }
 
@@ -254,6 +262,12 @@ export interface UploadVideoResult {
 }
 
 export async function uploadVideo(input: UploadVideoInput, auth?: YouTubeAuth): Promise<UploadVideoResult> {
+  if (input.publishAt && input.privacyStatus !== 'private') {
+    throw new YouTubeError(
+      `publishAt requires privacyStatus 'private' (got '${input.privacyStatus}') — ` +
+        'YouTube schedules only private→public; unlisted never self-publishes.',
+    );
+  }
   const meta = {
     snippet: {
       title: input.title,
@@ -267,6 +281,7 @@ export async function uploadVideo(input: UploadVideoInput, auth?: YouTubeAuth): 
     status: {
       privacyStatus: input.privacyStatus,
       selfDeclaredMadeForKids: input.madeForKids ?? false,
+      ...(input.publishAt ? { publishAt: input.publishAt } : {}),
     },
   };
   const contentType = input.contentType ?? 'video/mp4';
