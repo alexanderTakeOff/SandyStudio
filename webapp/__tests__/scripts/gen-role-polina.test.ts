@@ -11,8 +11,12 @@ import { buildPolinaRole } from '../../scripts/gen-role-polina';
 
 describe('gen-role-polina', () => {
   it('roles/polina.md совпадает с выводом из реестров (иначе: npx tsx scripts/gen-role-polina.ts --write)', async () => {
+    // Без CR: git в разных деревьях разворачивает переводы строк по-разному
+    // (`.gitattributes`), и байтовое сравнение объявляло роль устаревшей там, где
+    // она совпадала до знака. Сторож не должен зависеть от настроек чекаута.
+    const lf = (s: string) => s.replace(/\r\n/g, '\n');
     const committed = readFileSync(resolve(process.cwd(), 'roles', 'polina.md'), 'utf-8');
-    expect(committed).toBe(await buildPolinaRole());
+    expect(lf(committed)).toBe(lf(await buildPolinaRole()));
   });
 
   it('роль несёт обязательные блоки харнеса', async () => {

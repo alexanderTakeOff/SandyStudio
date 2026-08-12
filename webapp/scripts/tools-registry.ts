@@ -170,6 +170,7 @@ async function main() {
   }
 
   const fresh = render(entries);
+  const normalise = (s: string | null): string | null => (s === null ? null : s.replace(/\r\n/g, '\n'));
   if (process.argv.includes('--write')) {
     writeFileSync(SNAPSHOT, fresh, 'utf-8');
     console.log(`✓ ${entries.length} инструментов → docs/TOOLS.md`);
@@ -182,7 +183,11 @@ async function main() {
   } catch {
     stored = null;
   }
-  if (stored !== fresh) {
+  // СРАВНЕНИЕ БЕЗ CR (12.08). Сторож сравнивал байт в байт и потому врал в
+  // дереве, где git разворачивает CRLF (`.gitattributes`): содержимое совпадало
+  // до знака, а реестр объявлялся «разошедшимся с кодом». Сторож, чей вердикт
+  // зависит от настроек чекаута, — не сторож.
+  if (normalise(stored) !== normalise(fresh)) {
     console.error('РЕЕСТР РАЗОШЁЛСЯ С КОДОМ — docs/TOOLS.md устарел.');
     console.error('Починка: npx tsx scripts/tools-registry.ts --write (из webapp/), затем закоммитить.');
     process.exit(1);

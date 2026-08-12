@@ -35,7 +35,11 @@ const RUN_DIR = resolve(process.cwd(), 'scripts', 'run');
  */
 export function loadDoctrine(): string {
   const path = resolve(process.cwd(), '..', 'docs', 'doctrine', 'paradigm-architecture.md');
-  const raw = readFileSync(path, 'utf-8'); // нет файла → бросает, и это правильно
+  // CRLF снимается СРАЗУ (12.08): git разворачивает переводы строк по-разному в
+  // разных деревьях (`.gitattributes`), и разделитель `\n---\n` в дереве с CRLF
+  // не находился вовсе — генератор падал «формат файла изменился» там, где файл
+  // был в порядке. Читатель обязан быть нечувствителен к концам строк.
+  const raw = readFileSync(path, 'utf-8').replace(/\r\n/g, '\n'); // нет файла → бросает, и это правильно
   const first = raw.indexOf('\n---\n');
   const last = raw.lastIndexOf('\n---\n');
   if (first < 0 || last <= first) {
