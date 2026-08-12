@@ -987,6 +987,24 @@ export function ConciergePanel() {
     // Ф5: путь МОСТА — одна INSERT-строка, никакого стрима. Ответ Полины
     // придёт Realtime'ом (ветка m.bridge в onNewTurn); занятость показывает
     // плашка «ход в работе», которую снимет его приход.
+    // Сессия ума = ЭПИЗОД (закон моста): студийные треды он пропускает. Вне
+    // страницы эпизода сообщение уходило в `/api/mind/chat`, снесённый на Ф6, и
+    // Директор получал «chat route returned HTTP 404» — отказ, который называет
+    // номер, но не причину. Говорим причину и что сделать (12.08).
+    if (MIND_BRIDGE && !openEpisodeId) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', content: text, createdAt: submittedAt },
+        {
+          role: 'assistant',
+          content:
+            '⚠️ Ум ведёт разговор ПО ЭПИЗОДУ — его сессия привязана к эпизоду, студийного треда у него нет. Откройте эпизод (Эпизоды → нужный) и напишите оттуда.',
+        },
+      ]);
+      setInput('');
+      return;
+    }
+
     if (MIND_BRIDGE && openEpisodeId) {
       setMessages((prev) => [...prev, { role: 'user', content: text, createdAt: submittedAt }]);
       setInput('');
