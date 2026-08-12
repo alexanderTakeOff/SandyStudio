@@ -14,8 +14,8 @@ import { PUBLIC_ENV } from '@/lib/env';
 import {
   exchangeConsentCode,
   persistChannelToken,
-} from '@/lib/agents/providers/google-consent';
-import { getMyChannel } from '@/lib/agents/providers/youtube';
+} from '@/lib/providers/google-consent';
+import { getMyChannel } from '@/lib/providers/youtube';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

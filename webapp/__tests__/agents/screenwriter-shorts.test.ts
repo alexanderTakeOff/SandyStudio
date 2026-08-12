@@ -23,22 +23,42 @@ const BASE = {
 };
 
 describe('screenwriter buildUserMessage — SHORTS delivery + runtime target', () => {
-  test('shorts at a short runtime → vertical block + single-punch + explicit seconds', () => {
+  test('shorts at a short runtime → vertical block + one through-line + explicit seconds', () => {
     const msg = buildUserMessage({ ...BASE, shortsIsTarget: true, runtimeTargetSeconds: 30 });
     expect(msg).toContain('SHORTS DELIVERY IS ACTIVE');
     expect(msg).toContain('~30 seconds');
-    expect(msg).toContain('ONE self-contained gag arc'); // ≤40 single-punch variant
+    // 2026-08-06 — «ONE self-contained gag arc» читалось как «один гэг на ролик»
+    // и давало разреженные 35 секунд. Линия одна, гэгов — по числу кадров.
+    expect(msg).toContain('ONE through-line');
+    expect(msg).toContain('NOT a single gag');
     expect(msg).toContain('runtime_target_seconds` to exactly 30');
     // No more hard-coded 15–40 band.
     expect(msg).not.toContain('MUST be between 15 and 40');
     expect(msg).toContain('<brief>');
   });
 
-  test('Director-set 60 on a shorts episode wins — chain variant, not single-punch band', () => {
+  test('hook carries TWO numbers: movement by second 1, setup by second 2', () => {
+    // Три файла называли три разных числа (0–1 · 1–2 · 0–3). Они мерили разное;
+    // сведено к двум, каждое со своим предметом (решение Директора 25).
+    const msg = buildUserMessage({ ...BASE, shortsIsTarget: true, runtimeTargetSeconds: 30 });
+    expect(msg).toContain('movement must read by second 1');
+    expect(msg).toContain('setup must be understood by second 2');
+  });
+
+  test('gag plan line reaches the Writer verbatim when supplied', () => {
+    const msg = buildUserMessage({
+      ...BASE,
+      shortsIsTarget: true,
+      runtimeTargetSeconds: 30,
+      gagPlanLine: 'GAG DENSITY (hard, from the episode passport): ~10 shots of ~3s',
+    });
+    expect(msg).toContain('GAG DENSITY (hard, from the episode passport): ~10 shots of ~3s');
+  });
+
+  test('Director-set 60 on a shorts episode wins — runtime is authoritative', () => {
     const msg = buildUserMessage({ ...BASE, shortsIsTarget: true, runtimeTargetSeconds: 60 });
     expect(msg).toContain('SHORTS DELIVERY IS ACTIVE');
     expect(msg).toContain('~60 seconds');
-    expect(msg).toContain('chain several escalating gags');
     expect(msg).toContain('runtime_target_seconds` to exactly 60');
   });
 

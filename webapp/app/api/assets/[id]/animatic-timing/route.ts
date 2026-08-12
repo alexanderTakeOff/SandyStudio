@@ -36,7 +36,7 @@ import {
   type AnimaticDirectorOverride,
   type AudioTrack,
 } from '@/lib/api/animatic-shotlist';
-import { processMusicTrack, type AudioExt } from '@/lib/agents/providers/music-processor';
+import { processMusicTrack, type AudioExt } from '@/lib/providers/music-processor';
 import { cachedFileIfPresent, localCacheAbsPath } from '@/lib/media-cache';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';

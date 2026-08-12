@@ -4,12 +4,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('@/lib/agents/providers/youtube', async (importOriginal) => {
-  const mod = await importOriginal<typeof import('@/lib/agents/providers/youtube')>();
+vi.mock('@/lib/providers/youtube', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('@/lib/providers/youtube')>();
   return { ...mod, getMyChannel: vi.fn() };
 });
 
-import { getMyChannel } from '@/lib/agents/providers/youtube';
+import { getMyChannel } from '@/lib/providers/youtube';
 import {
   resolveChannelForEpisode,
   resolveChannelForSeries,
@@ -19,12 +19,12 @@ import {
   publishDefaultsOf,
   ChannelResolutionError,
   type ChannelPassport,
-} from '@/lib/agents/providers/channel-resolver';
+} from '@/lib/providers/channel-resolver';
 import {
   resolveChannelRefreshToken,
   hasAnyYouTubeCredential,
   GoogleAuthError,
-} from '@/lib/agents/providers/google-auth';
+} from '@/lib/providers/google-auth';
 
 const SANDY: ChannelPassport = {
   id: 'ch-1',

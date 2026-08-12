@@ -63,10 +63,20 @@ locations:                  # REQUIRED — list of locations from World Bible
   - location_name: string
     scenes_set_here: string # OPTIONAL — rough description of which scenes
 
-comedy_beats:               # REQUIRED — minimum 3, maximum 8
+comedy_beats:               # REQUIRED — ОДИН НА КАДР, а не «3–8 на эпизод».
+                            # 2026-08-06 (решение Директора): старая вилка 3–8
+                            # разрешала четыре длинных кадра на 30-секундный
+                            # ролик. Единица измерения — КАДР: 30 с → ~10 кадров
+                            # → ≥10 РАЗЛИЧНЫХ битов; 45 с → 10–20 кадров.
+                            # Числа выводит `resolveGagPlan()` из хронометража
+                            # эпизода и отдаёт одной строкой И Сценаристу, И
+                            # Раскадровщику; Директор переопределяет через
+                            # `episode.metadata.gag_plan`.
   - beat: string            # One sentence describing a specific comic moment to hit
                             # Example: "Panther attempts to hide soufflé under hat
                             #           as Clouseau enters — hat slowly rises"
+                            # «Различный» — ключевое слово: тот же бит в новом
+                            # костюме не считается вторым.
 
 tone_notes: string          # OPTIONAL — specific tone guidance for this episode
                             # e.g. "More melancholy than usual, Buster Keaton influence"

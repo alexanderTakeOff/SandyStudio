@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/Button';
 import { AssetCollapsibleSection } from './AssetCollapsibleSection';
 import { StyleGuardianBadge } from './StyleGuardianBadge';
 import type { ImagePromptDoc, ImagePromptHistoryEntry } from '@/lib/api/series-bible';
+import { currentPromptEntry as pickCurrentPromptEntry } from '@/lib/asset-preview-resolver';
 
 function fmtDate(iso: string | undefined): string {
   if (!iso) return '—';
@@ -64,7 +65,7 @@ export function AssetImagePromptSection({
 }: AssetImagePromptSectionProps) {
   const currentEntry: ImagePromptHistoryEntry | undefined = useMemo(() => {
     if (!promptDoc) return undefined;
-    return promptDoc.history.find((h) => h.version === promptDoc.current_version);
+    return pickCurrentPromptEntry<ImagePromptHistoryEntry>(promptDoc) ?? undefined;
   }, [promptDoc]);
 
   const [draft, setDraft] = useState(currentEntry?.prompt ?? '');

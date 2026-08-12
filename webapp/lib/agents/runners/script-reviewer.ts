@@ -19,7 +19,7 @@ import {
   generateAnthropicText,
   AnthropicTextError,
   type AnthropicTextResult,
-} from '../providers/anthropic-text';
+} from '../../providers/anthropic-text';
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import { findApprovedAsset as findUpstreamAsset } from '../upstream';
 import type { AgentInputs } from '../types';

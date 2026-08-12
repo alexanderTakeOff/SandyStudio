@@ -35,8 +35,34 @@
 //   - Overruns → `remaining` is NOT clamped at 0. A negative number is the point.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { isModelPriced } from './agents/providers/anthropic-text';
-import { foldCost, type CostFold } from './agents/scorecard/factory-metrics';
+import { isModelPriced } from './providers/anthropic-text';
+export interface CostFold {
+  key: string;
+  costUsd: number;
+  calls: number;
+}
+
+/**
+ * Свернуть строки леджера по выбранному ключу (кто потратил / на что), по убыванию.
+ *
+ * Жил в `agents/scorecard/factory-metrics` — и ради пятнадцати строк чистой свёртки сводка
+ * денег (ценное ядро) держалась за скоркарту конвейера, которая уходит вместе с ролями.
+ * Ф1 новой парадигмы: считалка денег принадлежит деньгам.
+ */
+export function foldCost(
+  rows: Array<{ cost_usd: number | null }>,
+  keyOf: (r: never) => string,
+): CostFold[] {
+  const agg = new Map<string, CostFold>();
+  for (const r of rows) {
+    const key = keyOf(r as never) || 'unknown';
+    const cur = agg.get(key) ?? { key, costUsd: 0, calls: 0 };
+    cur.costUsd += Number(r.cost_usd ?? 0);
+    cur.calls += 1;
+    agg.set(key, cur);
+  }
+  return [...agg.values()].sort((a, b) => b.costUsd - a.costUsd);
+}
 
 /** Agent id whose rows are Polina's orchestration spend, not production spend. */
 export const CONCIERGE_BUCKET = 'concierge';

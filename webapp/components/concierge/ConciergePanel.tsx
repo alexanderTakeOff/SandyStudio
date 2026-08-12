@@ -22,9 +22,9 @@ import {
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import { usePathname } from 'next/navigation';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 import {
-  MessageCircle, Mic, MicOff, Send, Volume2, VolumeX, X, Sparkles, MessageSquarePlus,
+  MessageCircle, Mic, MicOff, Send, Volume2, VolumeX, X, Sparkles, MessageSquarePlus, BrainCircuit,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
@@ -71,6 +71,25 @@ interface Message {
 
 const STORAGE_KEY = 'sandystudio.prodassistant.history';
 const THREAD_KEY = 'sandystudio.prodassistant.threadId';
+// Ф4.4 — режим ЕДИНОГО УМА. Эндпойнт переключается флагом; тред = эпизод
+// (доктрина §7): у каждого эпизода СВОЙ ключ треда, переключение эпизода
+// переключает ленту. Старое решение «один тред следует за эпизодом»
+// (2026-06-23) в mind-режиме отменено — оно и было той кашей, где сериалы
+// мешались в одну ленту.
+const MIND_CHAT = process.env.NEXT_PUBLIC_MIND_CHAT === '1';
+// Ф5 миграции «Полина в харнес»: разговор идёт через МОСТ — панель кладёт
+// строку (/api/mind/turn), мост ведёт headless-сессию, ответ приходит
+// Realtime'ом. Флаг отдельный от MIND_CHAT ради отката: снять переменную —
+// панель вернётся на старый стриминговый роут.
+// Ф6: старый /api/mind/chat СНЕСЁН — mind-режим ходит только мостом; env-флаг
+// отката больше не имеет смысла (откат = git revert).
+const MIND_BRIDGE = MIND_CHAT;
+const CHAT_ENDPOINT = MIND_CHAT ? '/api/mind/chat' : '/api/concierge/chat';
+// Ключ треда — по СУЩНОСТИ, которую открыл Директор (12.08): эпизод, сериал или
+// студия. Раньше ключ знал только эпизод, поэтому разговор уровня сериала и
+// студии было негде держать, а чат вне эпизода уходил в снесённый роут.
+const threadKeyFor = (entityKey: string): string =>
+  MIND_CHAT ? `sandystudio.mind.threadId.${entityKey}` : THREAD_KEY;
 const TTS_KEY = 'sandystudio.prodassistant.ttsEnabled';
 // 2026-05-26 (TD-54.3) — left/right dock retired. PA now lives in the middle
 // grid column between Sidebar and Content. SIDE_KEY removed; old localStorage
@@ -352,15 +371,38 @@ export function ConciergePanel() {
   // Default open=true per Director directive 2026-05-25 — page-load lands with
   // PA already expanded. Persisted in localStorage so an explicit close sticks.
   const [open, setOpen] = useState(true);
-  // The episode the Director currently has OPEN (/episodes/<uuid>). Sent with
-  // every chat request so the Prod Assistant FOLLOWS the open episode instead of
-  // staying pinned to whatever episode the thread first bound to. Trusted human
-  // signal — the chat route re-binds the thread to it (2026-06-23).
-  const pathname = usePathname();
-  const openEpisodeId = pathname?.match(/\/episodes\/([^/?#]+)/)?.[1] ?? null;
+  // ЧТО ОТКРЫТО У ДИРЕКТОРА — берётся у ЕДИНСТВЕННОГО держателя контекста
+  // (WorkspaceScopeProvider), а не выводится здесь своим regex'ом по пути.
+  // Свой вывод и был частью класса дефектов «где я»: чат знал только эпизод,
+  // поэтому вне его страницы уходил в снесённый роут и печатал «HTTP 404».
+  const { episodeId: openEpisodeId, seriesId: openSeriesId, kind: contextKind, tab } =
+    useWorkspaceScope();
+  // Сущность разговора одной строкой — ключ треда, зависимость эффектов и то,
+  // что панель показывает Директору в приветствии новой сессии.
+  const entityKey = openEpisodeId
+    ? `episode:${openEpisodeId}`
+    : openSeriesId
+      ? `series:${openSeriesId}`
+      : 'studio';
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
+  // D105 (2026-08-10) — ЕДИНСТВЕННАЯ правда о том, идёт ли ход Полины: замок
+  // `mind_session.busy`, который мост ставит на время хода. Локальный `streaming`
+  // на эту роль не годится дважды: он гаснет в `finally` сразу, как мост ПРИНЯЛ
+  // строку (а ход после этого идёт ещё минуты), и он вообще не загорается для
+  // ходов, разбуженных КНОПКОЙ (approval_granted) — а именно там Директор трижды
+  // за час спрашивал «она работает или встала?».
+  const [turnBusySince, setTurnBusySince] = useState<string | null>(null);
+  // Заполненность контекста Полины — токены последнего запроса хода (мост кладёт
+  // их в mind_session). Разговор не обнуляется между ходами, поэтому число растёт
+  // и упирается в окно модели; Директору нужно видеть это ДО того, как упрётся.
+  const [contextTokens, setContextTokens] = useState<number | null>(null);
+  // Предел приходит от моста вместе с числом: он знает, какой моделью запущен ход.
+  // Хардкод «200k» в панели дал Директору «1038k / 200k · 519%» — неверным было и
+  // число (сумма по всем запросам хода вместо последнего), и знаменатель.
+  const [contextLimit, setContextLimit] = useState<number>(1_000_000);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [listening, setListening] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const [panelWidth, setPanelWidth] = useState<number>(420);
@@ -383,13 +425,20 @@ export function ConciergePanel() {
   // Re-callable so the badge SELF-CORRECTS after an on-the-fly provider switch —
   // the mount-only fetch left the label stale (e.g. "OpenAI · gpt-5.5") after the
   // Director switched Polina to Sonnet 5. Called on mount AND after each turn.
+  // 12.08 — метка модели вернулась из мёртвого источника в живой. GET
+  // /api/concierge/chat снесён на Ф6, поэтому шапка молчала: Директор не видел,
+  // на чём работает Полина. Берём ВЫБРАННОЕ в Studio Settings
+  // (/api/providers/concierge, Director-only); исполненное перебьёт его ниже —
+  // мост пишет модель хода в mind_session, и она главнее выбора.
   const refreshStatus = useCallback(async () => {
     try {
-      const r = await fetch('/api/concierge/chat');
+      const r = await fetch('/api/providers/concierge');
       if (!r.ok) return;
-      const d = await r.json();
-      if (d?.label) setModelLabel(d.label as string);
-      if (typeof d?.autoReact === 'boolean') setAutoReact(d.autoReact);
+      const d = (await r.json()) as { data?: { active_id?: string; options?: Array<{ id: string; display_name: string }> } };
+      const activeId = d.data?.active_id;
+      const opt = d.data?.options?.find((o) => o.id === activeId);
+      if (opt) setModelLabel(opt.display_name);
+      else if (activeId) setModelLabel(activeId);
     } catch {
       // non-fatal — keep the last known label
     }
@@ -402,6 +451,13 @@ export function ConciergePanel() {
   // the Director can cancel a hanging turn. abortControllerRef holds the
   // current controller during streaming; null when no request is in flight.
   const abortControllerRef = useRef<AbortController | null>(null);
+  // D83: DB-load эффект висит на [threadId] и не должен перезапускаться от каждой
+  // новой реплики — иначе восстановление ленты дёргалось бы весь разговор. Ref
+  // даёт ему прочитать АКТУАЛЬНЫЙ стейт, не попадая в зависимости.
+  const messagesRef = useRef<Message[]>([]);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   // TD-20.A — current tool plashka. `null` when no tool is executing.
   // `startedAt` is wall-clock so the elapsed-seconds counter ticks via the
@@ -426,8 +482,11 @@ export function ConciergePanel() {
       if (raw) setMessages(JSON.parse(raw));
     } catch { /* ignore */ }
     try {
-      const t = localStorage.getItem(THREAD_KEY);
-      if (t) setThreadId(t);
+      // В mind-режиме тред привязан к эпизоду — его грузит эффект [openEpisodeId] ниже.
+      if (!MIND_CHAT) {
+        const t = localStorage.getItem(THREAD_KEY);
+        if (t) setThreadId(t);
+      }
     } catch { /* ignore */ }
     try {
       const tts = localStorage.getItem(TTS_KEY);
@@ -448,6 +507,77 @@ export function ConciergePanel() {
       if (Number.isFinite(h) && h >= INPUT_MIN_PX && h <= INPUT_MAX_PX) setInputHeight(h);
     } catch { /* ignore */ }
   }, []);
+
+  // Ф4.4 — mind-режим: тред СЛЕДУЕТ за открытой СУЩНОСТЬЮ через свой ключ.
+  // Смена сущности = смена треда = смена ленты; история нового треда дольётся
+  // существующим [threadId] DB-load эффектом. Вернувшись на эпизод, Директор
+  // попадает в ТОТ ЖЕ разговор — это его прямое требование (12.08).
+  useEffect(() => {
+    if (!MIND_CHAT) return;
+    let cancelled = false;
+    try {
+      const t = localStorage.getItem(threadKeyFor(entityKey));
+      setThreadId(t ?? null);
+      setMessages([]);
+      try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+
+      // D85 (2026-08-09): ключа в localStorage нет — СПРОСИТЬ СЕРВЕР, а не считать
+      // тред новым. Привязка «тред ↔ эпизод» живёт в базе (`concierge_threads`), а
+      // localStorage — лишь её кэш на этом браузере. На другом устройстве, в другом
+      // профиле или после чистки хранилища панель открывала эпизод с пустым тредом
+      // и заводила ВТОРОЙ: переписка не терялась, но становилась недостижимой из
+      // UI, а разговор начинался с нуля на модели за $5/$25.
+      //
+      // Запрос — ровно первая ветка `resolveOpenThreadId`: открытый тред ИМЕННО
+      // этого эпизода. Серийный и глобальный фолбэки не воспроизводим сознательно
+      // (роут такой тред всё равно отвергнет, а при параллельных эпизодах он увёл
+      // бы в чужой ум).
+      if (!t) {
+        void (async () => {
+          try {
+            const sb = createSupabaseBrowserClient();
+            let q = sb
+              .from('concierge_threads')
+              .select('id')
+              .is('ended_at', null);
+            // Строго СВОЯ сущность: серийный и студийный фолбэки не
+            // воспроизводим — они увели бы в чужой ум (та же болезнь «где я»).
+            if (openEpisodeId) q = q.eq('episode_id', openEpisodeId);
+            else if (openSeriesId) q = q.is('episode_id', null).eq('series_id', openSeriesId);
+            else q = q.is('episode_id', null).is('series_id', null);
+            const { data } = await q
+              .order('started_at', { ascending: false })
+              .limit(1);
+            // Тот же каст, что у соседних запросов в этом файле: supabase-js
+            // выводит tuple-with-error union и теряет форму строки.
+            const rows = (data ?? []) as unknown as Array<{ id: string }>;
+            const found = rows[0]?.id;
+            if (cancelled) return;
+            if (!found) {
+              // ПУСТАЯ СУЩНОСТЬ — не пустое окно (требование Директора 12.08):
+              // сказать, что разговора тут ещё не было и с чего он начнётся.
+              setMessages([
+                {
+                  role: 'assistant',
+                  content:
+                    contextKind === 'episode'
+                      ? '🆕 Здесь ещё не было разговора. Новая сессия ума по этому ЭПИЗОДУ начнётся с вашего первого сообщения — Полина увидит эпизод и вкладку, на которой вы стоите.'
+                      : contextKind === 'series'
+                        ? '🆕 Здесь ещё не было разговора. Новая сессия ума по этому СЕРИАЛУ начнётся с вашего первого сообщения.'
+                        : '🆕 Здесь ещё не было разговора. Это сессия ума уровня СТУДИИ — про эпизод она ничего не знает, пока вы его не откроете.',
+                },
+              ]);
+              return;
+            }
+            setThreadId(found);
+            try { localStorage.setItem(threadKeyFor(entityKey), found); } catch { /* ignore */ }
+          } catch { /* сеть/права — панель просто заведёт новый тред, как раньше */ }
+        })();
+      }
+    } catch { /* ignore */ }
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityKey]);
 
   // Persist panel width / open / input height.
   useEffect(() => {
@@ -560,7 +690,9 @@ export function ConciergePanel() {
       // chat-internal sets; the regular chat-route assistant turn (which
       // arrives via the streaming POST response) does NOT have this flag,
       // so the de-dup-with-streaming concern from Realtime stays solved.
-      if (turn.role === 'assistant' && m.auto_react === true) {
+      // Ф5: ходы моста (m.bridge) приходят ТОЛЬКО Realtime'ом — рисуем их той
+      // же веткой, что server-authored auto-react.
+      if (turn.role === 'assistant' && (m.auto_react === true || m.bridge === true)) {
         // 2026-05-26 — chat-internal persists intermediate `🔧 toolName(args)`
         // tool_call turns with auto_react=true for audit. Director sees them
         // as visual noise in the chat. Drop them on the UI side; the
@@ -627,13 +759,23 @@ export function ConciergePanel() {
         const sb = createSupabaseBrowserClient();
         // TD-20.B 2026-05-20 — also pull auto-react assistant turns so
         // they survive page reload. Filter is applied in JS below.
+        // D83 (2026-08-08): роль `director` тоже грузится. До этой правки запрос
+        // брал только system+assistant, а внутри цикла оставлял из assistant
+        // ТОЛЬКО auto-react — то есть при возврате в эпизод лента восстанавливала
+        // одни ambient-пузыри, без единой реплики разговора. Директор: «переключение
+        // между эпизодами чат Полины стирается и не восстанавливается».
+        //
+        // Опаснее косметики: панель шлёт в /api/mind/chat историю ИЗ СВОЕГО стейта
+        // (роут ничего не грузит из базы), и `sessionStorage` чистится при смене
+        // треда. Пустая лента = следующий ход уходит без памяти, и ум начинает
+        // разговор заново, хотя вся история лежит в concierge_turns.
         const { data, error } = await sb
           .from('concierge_turns')
           .select('id,role,content,metadata,created_at')
           .eq('thread_id', threadId)
-          .in('role', ['system', 'assistant'])
+          .in('role', ['system', 'assistant', 'director'])
           .order('created_at', { ascending: false })
-          .limit(30);
+          .limit(60);
         console.log('[ConciergePanel] DB-load result: rows=', data?.length ?? 0, 'error=', error);
         if (cancelled || error || !data) return;
         // supabase-js infers a tuple-with-error union for the row type when
@@ -648,8 +790,43 @@ export function ConciergePanel() {
         };
         const rows = data as unknown as SystemTurnRow[];
         const additions: Message[] = [];
+        // D83: ленту разговора (director + обычные assistant) восстанавливаем
+        // ТОЛЬКО когда она пуста — то есть после смены эпизода или холодной
+        // загрузки. Если реплики уже на экране, они пришли стримингом и своего
+        // `turnId` не несут, так что дедуп по id их не поймает и мы бы задвоили
+        // диалог. Ambient/team-chat пузыри грузятся всегда, как и раньше.
+        const conversationEmpty = messagesRef.current.every(
+          (m) => m.role !== 'user' && m.role !== 'assistant',
+        );
         for (const t of [...rows].reverse()) {
           const meta = (t.metadata ?? {}) as Record<string, unknown>;
+          // D83: ход Директора — в ленте это `user`. Роут пишет его ДО цикла
+          // (role='director'), поэтому без него восстановленный разговор был бы
+          // монологом ума.
+          if (t.role === 'director') {
+            if (conversationEmpty && t.content.trim()) {
+              additions.push({
+                role: 'user',
+                content: t.content,
+                turnId: t.id,
+                createdAt: t.created_at,
+              });
+            }
+            continue;
+          }
+          // D83: обычный (не auto-react) ответ ума — тот самый, что приходит
+          // стримингом в живом ходе и раньше при возврате терялся целиком.
+          if (t.role === 'assistant' && meta.auto_react !== true) {
+            if (conversationEmpty && t.content.trim()) {
+              additions.push({
+                role: 'assistant',
+                content: t.content,
+                turnId: t.id,
+                createdAt: t.created_at,
+              });
+            }
+            continue;
+          }
           // TD-20.B — auto-react assistant turn (server-authored by
           // chat-internal). Restore so reload doesn't lose Polina's
           // autonomous reactions.
@@ -805,12 +982,100 @@ export function ConciergePanel() {
     };
   }, [threadId]);
 
+  // D105 — опрос замка хода. Читаем ту же базу тем же браузерным клиентом, что и
+  // остальной опрос панели: ни нового роута, ни правки моста — источник уже есть.
+  useEffect(() => {
+    // Карта сессии живёт на ТРЕДЕ (0057) — читаем её оттуда, а не с эпизода:
+    // разговор может идти по сериалу или по студии, где эпизода нет вовсе.
+    if (!MIND_BRIDGE || !threadId) { setTurnBusySince(null); return; }
+    let cancelled = false;
+    const read = async () => {
+      try {
+        const sb = createSupabaseBrowserClient();
+        const { data } = await sb
+          .from('concierge_threads')
+          .select('mind_session')
+          .eq('id', threadId)
+          .maybeSingle();
+        if (cancelled) return;
+        const mind = ((data as { mind_session?: Record<string, unknown> } | null)?.mind_session ??
+          {}) as {
+          busy?: { started_at?: string } | null;
+          context_tokens?: number;
+          context_limit?: number;
+          model?: string;
+        };
+        setTurnBusySince(mind.busy?.started_at ?? null);
+        // ИСПОЛНЕННОЕ главнее выбранного: показываем модель последнего хода.
+        if (typeof mind.model === 'string' && mind.model) {
+          setModelLabel(`Подписка · ${mind.model}`);
+        }
+        setContextTokens(typeof mind.context_tokens === 'number' ? mind.context_tokens : null);
+        if (typeof mind.context_limit === 'number' && mind.context_limit > 0) {
+          setContextLimit(mind.context_limit);
+        }
+      } catch { /* опрос best-effort: молчащая плашка лучше молчащего экрана */ }
+    };
+    void read();
+    const timer = setInterval(() => { void read(); }, 4_000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [threadId]);
+
+  // Секундная стрелка для плашки — тикает только пока ход идёт.
+  useEffect(() => {
+    if (!turnBusySince) return;
+    const t = setInterval(() => setNowTick(Date.now()), 1_000);
+    return () => clearInterval(t);
+  }, [turnBusySince]);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const text = input.trim();
     if (!text || streaming) return;
 
     const submittedAt = new Date().toISOString();
+
+    // Ф5: путь МОСТА — одна INSERT-строка, никакого стрима. Ответ Полины
+    // придёт Realtime'ом (ветка m.bridge в onNewTurn); занятость показывает
+    // плашка «ход в работе», которую снимет его приход.
+    // Разговор идёт ПО СУЩНОСТИ, которую открыл Директор: эпизод, сериал или
+    // студия. Заглушка «откройте эпизод» (a36831c7) отработала своё — теперь
+    // мост ведёт тред любой сущности, и требовать эпизод больше не нужно.
+    if (MIND_BRIDGE) {
+      setMessages((prev) => [...prev, { role: 'user', content: text, createdAt: submittedAt }]);
+      setInput('');
+      setStreaming(true);
+      try {
+        const res = await fetch('/api/mind/turn', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scope: { kind: contextKind, episodeId: openEpisodeId, seriesId: openSeriesId },
+            tab,
+            text,
+          }),
+        });
+        const j = (await res.json().catch(() => ({}))) as { ok?: boolean; threadId?: string; error?: string };
+        if (!res.ok || !j.ok) {
+          setMessages((prev) => [
+            ...prev,
+            { role: 'assistant', content: `⚠️ мост не принял сообщение: ${j.error ?? res.status}` },
+          ]);
+        } else if (j.threadId && j.threadId !== threadId) {
+          setThreadId(j.threadId);
+          try { localStorage.setItem(threadKeyFor(entityKey), j.threadId); } catch { /* ignore */ }
+        }
+      } catch (err) {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: `⚠️ мост недоступен: ${err instanceof Error ? err.message : err}` },
+        ]);
+      } finally {
+        setStreaming(false);
+      }
+      return;
+    }
+
     const next: Message[] = [
       ...messages,
       { role: 'user', content: text, createdAt: submittedAt },
@@ -838,7 +1103,7 @@ export function ConciergePanel() {
       // closing the OpenAI/tool loop on abort.
       const controller = new AbortController();
       abortControllerRef.current = controller;
-      const res = await fetch('/api/concierge/chat', {
+      const res = await fetch(CHAT_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -863,7 +1128,7 @@ export function ConciergePanel() {
           try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
         }
         setThreadId(newThreadId);
-        try { localStorage.setItem(THREAD_KEY, newThreadId); } catch { /* ignore */ }
+        try { localStorage.setItem(threadKeyFor(entityKey), newThreadId); } catch { /* ignore */ }
       }
       // 2026-05-22 — server-side error envelope detection BEFORE stream parse.
       // When chat route's outer try-catch fires (Supabase quota / unavailable
@@ -1069,6 +1334,17 @@ export function ConciergePanel() {
   // which propagates as req.signal.aborted in the chat route → the
   // server emits {"t":"cancelled"} then closes.
   function handleCancel() {
+    if (MIND_BRIDGE) {
+      // Мост убьёт дерево процесса хода (taskkill /T) и допишет честную строку.
+      void fetch('/api/mind/turn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: { kind: contextKind, episodeId: openEpisodeId, seriesId: openSeriesId },
+          cancel: true,
+        }),
+      }).catch(() => {});
+    }
     abortControllerRef.current?.abort();
   }
 
@@ -1097,12 +1373,45 @@ export function ConciergePanel() {
       const data = (await res.json()) as { threadId?: string };
       if (!data.threadId) return;
       setThreadId(data.threadId);
-      try { localStorage.setItem(THREAD_KEY, data.threadId); } catch { /* ignore */ }
+      try { localStorage.setItem(threadKeyFor(entityKey), data.threadId); } catch { /* ignore */ }
       setMessages([]);
       try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[prod-assistant] new conversation failed', err);
+    }
+  }
+
+  // 11.08 — «Новая сессия ума». Залипший шелл (незакрытая кавычка) не лечится
+  // новым ходом: `--resume` восстанавливает состояние вместе с сессией, и
+  // единственное лекарство — сброс `session_id`, который до сегодня делали
+  // руками в базе. Отличие от «Нового разговора» рядом: тот архивирует
+  // ПЕРЕПИСКУ, этот забывает ПАМЯТЬ Полины; история тредa остаётся на месте.
+  async function handleResetMindSession() {
+    if (typeof window !== 'undefined') {
+      const ok = window.confirm(
+        'Начать новую сессию ума? Полина забудет текущий разговор и стартует с чистой памятью. Переписка сохранится.',
+      );
+      if (!ok) return;
+    }
+    try {
+      const res = await fetch('/api/mind/turn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: { kind: contextKind, episodeId: openEpisodeId, seriesId: openSeriesId },
+          reset: true,
+        }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        if (typeof window !== 'undefined') window.alert(j.error ?? 'Не вышло сбросить сессию');
+        return;
+      }
+      void refreshStatus();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[prod-assistant] mind session reset failed', err);
     }
   }
 
@@ -1353,6 +1662,17 @@ export function ConciergePanel() {
             >
               <MessageSquarePlus size={16} />
             </button>
+            {MIND_BRIDGE && (
+              <button
+                onClick={() => void handleResetMindSession()}
+                disabled={streaming || turnBusySince !== null}
+                aria-label="Новая сессия ума"
+                title="Новая сессия ума — Полина забывает разговор и стартует чистой сессией (лечит залипший шелл)"
+                className="h-8 w-8 rounded-md text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <BrainCircuit size={16} />
+              </button>
+            )}
             <button
               onClick={toggleTts}
               aria-label={ttsEnabled ? 'Disable voice replies' : 'Enable voice replies'}
@@ -1521,11 +1841,51 @@ export function ConciergePanel() {
               <span className="text-text-muted tabular-nums">{toolElapsedSec}s</span>
             </div>
           )}
+          {/* D105 — ход Полины идёт. Живёт от замка в базе, поэтому виден и для хода,
+              который разбудила КНОПКА, а не отправка из панели. Время — от старта хода,
+              чтобы «долго» отличалось от «висит». */}
+          {MIND_BRIDGE && turnBusySince && (
+            <div className="text-xs px-2 flex items-center gap-1.5 text-[var(--accent-primary)]">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent-primary)] animate-pulse" />
+              <span>Полина работает</span>
+              <span className="text-text-muted">·</span>
+              <span className="text-text-muted tabular-nums">
+                {(() => {
+                  const sec = Math.max(0, Math.round((nowTick - new Date(turnBusySince).getTime()) / 1000));
+                  return sec < 60 ? `${sec} с` : `${Math.floor(sec / 60)} мин ${sec % 60} с`;
+                })()}
+              </span>
+            </div>
+          )}
+          {/* Заполненность контекста Полины. Предел сообщает мост — он знает, какой
+              моделью запущен ход; порог 70% выбран как «ещё успеваешь свернуть тему». */}
+          {MIND_BRIDGE && contextTokens !== null && (
+            <div
+              className="text-xs px-2 flex items-center gap-1.5 text-text-muted"
+              title={`${contextTokens.toLocaleString('ru-RU')} токенов в последнем запросе хода`}
+            >
+              <span>контекст Полины</span>
+              <span className="tabular-nums">
+                {Math.round(contextTokens / 1000)}k / {Math.round(contextLimit / 1000)}k
+              </span>
+              <span
+                className={
+                  contextTokens / contextLimit >= 0.85
+                    ? 'text-[var(--status-error,#e5484d)]'
+                    : contextTokens / contextLimit >= 0.7
+                      ? 'text-[var(--accent-primary)]'
+                      : 'text-text-muted'
+                }
+              >
+                {Math.round((contextTokens / contextLimit) * 100)}%
+              </span>
+            </div>
+          )}
           {/* TD-20.A — Generic streaming hint when no tool plashka is active. */}
-          {streaming && !toolPlashka && (
+          {streaming && !toolPlashka && !turnBusySince && (
             <div className="text-xs text-text-muted px-2 italic flex items-center gap-1.5">
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--text-muted)] animate-pulse" />
-              Polina is thinking…
+              {MIND_BRIDGE ? 'принято, ждёт очереди…' : 'Polina is thinking…'}
             </div>
           )}
         </div>

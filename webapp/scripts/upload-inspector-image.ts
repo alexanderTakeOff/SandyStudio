@@ -4,7 +4,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { persistBinary, type BinaryExt } from '../lib/agents/persist-binary';
+import { persistBinary, type BinaryExt } from '../lib/persist-binary';
 
 const envPath = resolve(process.cwd(), '.env.local');
 if (existsSync(envPath)) for (const raw of readFileSync(envPath, 'utf-8').split('\n')) { const l = raw.trim(); if (!l || l.startsWith('#')) continue; const eq = l.indexOf('='); if (eq <= 0) continue; let v = l.slice(eq + 1).trim(); if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1); process.env[l.slice(0, eq).trim()] = v; }

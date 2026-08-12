@@ -2,6 +2,15 @@
 # concurrent master edit instead of a hard merge conflict; history preserved.
 PLAN.md merge=union
 
+# Двойной клик Директора ломается о концы строк (2026-08-09). cmd.exe на файле с
+# LF-переводами теряет первый символ следующей строки: каждый REM-комментарий выпадал
+# в консоль отдельной ошибкой ('econd' is not recognized, 'ается' is not recognized).
+# Ложный крик маскирует настоящие ошибки запуска — того же класса дефект, что тихий
+# отказ, только наоборот. Правило вместо ручной правки: ВСЕ лаунчеры всегда CRLF,
+# включая те, что напишет агент, и те, что приедут в клон Полины по git pull.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
 # Append-only training log — the hook appends on BOTH machines, so a laptop/desktop
 # round-trip is a guaranteed conflict on an append. Union keeps both sides (same
 # rationale as PLAN.md above; order within the file is not load-bearing).

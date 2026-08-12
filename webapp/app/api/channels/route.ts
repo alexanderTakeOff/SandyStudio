@@ -16,7 +16,7 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk, apiCreated } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { ConflictError } from '@/lib/api/errors';
-import { resolveChannelRefreshToken } from '@/lib/agents/providers/google-auth';
+import { resolveChannelRefreshToken } from '@/lib/providers/google-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

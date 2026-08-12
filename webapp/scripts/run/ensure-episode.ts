@@ -2,7 +2,7 @@
 //
 // Prints the episode id — export it as RUN_EPISODE_ID for every other run tool,
 // which refuse to act without it. Contract: `--help`.
-import { sb, S15 } from './_env';
+import { sb, seriesId } from './_env';
 import { defineTool } from './_tool';
 
 export default defineTool(
@@ -18,15 +18,20 @@ export default defineTool(
       ceiling: { about: 'потолок бюджета эпизода в долларах', default: '50' },
       run: { about: 'метка прогона в паспорте', default: 'forward-run' },
     },
+    env: {
+      RUN_SERIES_ID: { about: 'сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу' },
+    },
     reads: ['episodes'],
     writes: ['episodes'],
+    // Не станция маршрута, а его начало: эпизод должен существовать до первой станции.
+    stations: [],
   },
   async ({ arg }) => {
     const code = arg('code');
     const { data: found } = await sb
       .from('episodes')
       .select('id,episode_code,status,budget_ceiling')
-      .eq('series_id', S15)
+      .eq('series_id', seriesId())
       .eq('episode_code', code)
       .maybeSingle();
     if (found) {
@@ -39,7 +44,7 @@ export default defineTool(
     const { data, error } = await sb
       .from('episodes')
       .insert({
-        series_id: S15,
+        series_id: seriesId(),
         episode_code: code,
         title_working: arg('title'),
         status: 'BRIEF_APPROVED',

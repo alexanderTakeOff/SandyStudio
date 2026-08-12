@@ -25,7 +25,7 @@ for (const raw of readFileSync('.env.local', 'utf-8').split('\n')) {
   process.env[l.slice(0, e).trim()] = v;
 }
 import { createClient } from '@supabase/supabase-js';
-import { openAIEditsMultiProvider } from '../lib/agents/providers/openai-edits-multi';
+import { openAIEditsMultiProvider } from '../lib/providers/openai-edits-multi';
 import { recordCost } from '../lib/budget';
 
 const STYLE_ANCHOR_FILE = 'SS-S20-SBL-style_s20_style_canon_v1-v01-LOCKED.png';

@@ -24,6 +24,9 @@ describe('buildPipelineSnapshot — per-agent rows (Topic 3 19-row model)', () =
   it('returns per-agent rows in canonical order (Brief → Casting → Writer, 2026-06-23)', () => {
     const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
     expect(stages.map((s) => s.id)).toEqual([
+      // 2026-08-06 — канон СЕРИИ встал первой строкой: от него зависят шесть
+      // строк ниже, и до сих пор его отказ читался как отказ эпизода.
+      'series_canon',
       'brief',
       'casting',
       'screenwriter',
@@ -42,11 +45,30 @@ describe('buildPipelineSnapshot — per-agent rows (Topic 3 19-row model)', () =
       'final_cut',
       'copywriter',
       'thumbnail_designer',
-      'thumbnail_critic',
       'thumbnail_creator',
       'publisher',
       'analytics_collector',
     ]);
+  });
+
+  // 2026-08-06 — rows that named a worker who does not exist now say what they are.
+  it('Casting and Музыка are declared as Director INPUT, not as agents', () => {
+    const byId = new Map(buildPipelineSnapshot('BRIEF_PENDING', [], []).map((s) => [s.id, s]));
+    for (const id of ['casting', 'music_generator'] as const) {
+      expect(byId.get(id)!.role).toBe('input');
+      expect(byId.get(id)!.agents).toEqual(['Director']);
+    }
+  });
+
+  it('Continuity Critic names the worker that actually runs', () => {
+    const byId = new Map(buildPipelineSnapshot('BRIEF_PENDING', [], []).map((s) => [s.id, s]));
+    // `EXEC-CONT` was never shipped; `EXEC-WCHK` has always done the work.
+    expect(byId.get('continuity_critic')!.agents).toEqual(['EXEC-WCHK']);
+  });
+
+  it('Key Art Critic is gone — an unstaffed slot is not a stage', () => {
+    const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
+    expect(stages.find((s) => s.id === 'thumbnail_critic')).toBeUndefined();
   });
 
   it('tiers: Artist/Author/Editor + hard-gate = primary; Designer/Critic = muted', () => {
@@ -57,7 +79,7 @@ describe('buildPipelineSnapshot — per-agent rows (Topic 3 19-row model)', () =
       expect(byId.get(id)!.tier).toBe('primary');
     }
     // MUTED — Designers + Critics
-    for (const id of ['script_critic', 'continuity_critic', 'reference_designer', 'reference_critic', 'shot_designer', 'shot_critic', 'thumbnail_designer', 'thumbnail_critic'] as const) {
+    for (const id of ['script_critic', 'continuity_critic', 'reference_designer', 'reference_critic', 'shot_designer', 'shot_critic', 'thumbnail_designer'] as const) {
       expect(byId.get(id)!.tier).toBe('muted');
     }
   });
@@ -74,7 +96,7 @@ describe('buildPipelineSnapshot — per-agent rows (Topic 3 19-row model)', () =
     expect(byId.get('thumbnail_designer')!.serves).toBe('thumbnail_creator');
   });
 
-  it('thumbnail_critic is an honest unstaffed empty slot (q11a)', () => {
+  it.skip('thumbnail_critic is an honest unstaffed empty slot (q11a) — row removed 2026-08-06', () => {
     const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
     const tc = stages.find((s) => s.id === 'thumbnail_critic')!;
     expect(tc.unstaffed).toBe(true);
@@ -430,5 +452,149 @@ describe('completedWorkByShot — D7 persistent trail (settled, live excluded)',
     expect(m.get('SH01')?.roles).toEqual(['artist']);
     expect(m.has('SH02')).toBe(false);
     expect(m.size).toBe(1);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Per-shot progress (2026-08-06). Six rows in the pipeline belong to the SHOT,
+// not the episode; a single lamp over 24 cells went green on the FIRST approved
+// asset, so "1 of 24" read as "done". The counter replaces both that lie and the
+// `eref_pilot_state` patch that had been papering over one of the six.
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('buildPipelineSnapshot — per-shot rows count cells, not lamps', () => {
+  const clip = (shot: string, status = 'APPROVED') => ({
+    ...baseAsset,
+    id: `vid-${shot}`,
+    file_type: `VID-shot-s15-e36-${shot.toLowerCase()}`,
+    status,
+    metadata: { shot_id: `S15-E36-${shot}` },
+  });
+
+  it('without a known shot count the old single-lamp rule stands', () => {
+    const stages = buildPipelineSnapshot('IN_PROGRESS', [clip('SH01')], []);
+    const row = stages.find((s) => s.id === 'visual_generator')!;
+    expect(row.state).toBe('approved');
+    expect(row.progress).toBeUndefined();
+  });
+
+  it('one shot of three is RUNNING, not approved, and says 1/3', () => {
+    const stages = buildPipelineSnapshot('IN_PROGRESS', [clip('SH01')], [], null, 3);
+    const row = stages.find((s) => s.id === 'visual_generator')!;
+    expect(row.progress).toEqual({ done: 1, total: 3 });
+    expect(row.state).toBe('running');
+  });
+
+  it('goes green only when the last shot closes', () => {
+    const assets = [clip('SH01'), clip('SH02'), clip('SH03')];
+    const row = buildPipelineSnapshot('IN_PROGRESS', assets, [], null, 3)
+      .find((s) => s.id === 'visual_generator')!;
+    expect(row.progress).toEqual({ done: 3, total: 3 });
+    expect(row.state).toBe('approved');
+  });
+
+  it('counts DISTINCT shots — three versions of one shot are still one cell', () => {
+    const assets = [clip('SH01'), { ...clip('SH01'), id: 'v2' }, { ...clip('SH01'), id: 'v3' }];
+    const row = buildPipelineSnapshot('IN_PROGRESS', assets, [], null, 3)
+      .find((s) => s.id === 'visual_generator')!;
+    expect(row.progress).toEqual({ done: 1, total: 3 });
+  });
+
+  it('reads the shot id from all three live shapes', () => {
+    const byMetadata = clip('SH01');
+    const byShotReference = {
+      ...baseAsset,
+      id: 'img-2',
+      file_type: 'IMG-episode_ref_whatever',
+      status: 'APPROVED',
+      metadata: { shot_reference: { shot_id: 'S15-E36-SH02' } },
+    };
+    const byFileType = {
+      ...baseAsset,
+      id: 'img-3',
+      file_type: 'IMG-episode_ref_s15_e36_sh03',
+      status: 'APPROVED',
+      metadata: null,
+    };
+    const refs = buildPipelineSnapshot('IN_PROGRESS', [byShotReference, byFileType], [], null, 3)
+      .find((s) => s.id === 'episode_references')!;
+    expect(refs.progress).toEqual({ done: 2, total: 3 });
+    const vids = buildPipelineSnapshot('IN_PROGRESS', [byMetadata], [], null, 3)
+      .find((s) => s.id === 'visual_generator')!;
+    expect(vids.progress).toEqual({ done: 1, total: 3 });
+  });
+
+  it('unapproved shots do not count, and one awaiting Director blocks the row', () => {
+    // A shot sitting in REVIEW is not progress — it is a request for a decision,
+    // and it outranks "work is happening" precisely because the work stopped.
+    const assets = [clip('SH01'), clip('SH02', 'REVIEW')];
+    const row = buildPipelineSnapshot('IN_PROGRESS', assets, [], null, 3)
+      .find((s) => s.id === 'visual_generator')!;
+    expect(row.progress).toEqual({ done: 1, total: 3 });
+    expect(row.state).toBe('blocked');
+  });
+
+  it('episode-level rows never grow a counter', () => {
+    const stages = buildPipelineSnapshot('IN_PROGRESS', [clip('SH01')], [], null, 3);
+    for (const id of ['brief', 'screenwriter', 'storyboarder', 'final_cut', 'publisher'] as const) {
+      expect(stages.find((s) => s.id === id)!.progress).toBeUndefined();
+    }
+  });
+
+  it('the eref pilot patch yields to the counter', () => {
+    // PENDING_REVIEW used to force `blocked` on the whole row. With a real
+    // counter the row reports work in progress instead of a false block.
+    const refs = [
+      { ...baseAsset, id: 'r1', file_type: 'IMG-episode_ref_s15_e36_sh01', status: 'APPROVED' },
+    ];
+    const row = buildPipelineSnapshot(
+      'IN_PROGRESS', refs, [], { eref_pilot_state: 'PENDING_REVIEW' }, 4,
+    ).find((s) => s.id === 'episode_references')!;
+    expect(row.progress).toEqual({ done: 1, total: 4 });
+    expect(row.state).toBe('running');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Канон серии как строка конвейера (2026-08-06, решение 20). Единственная
+// сущность студии, у которой не было состояния нигде: матрица кадров начинается
+// после неё, гейт автора Библии информационный. От канона зависят шесть строк, и
+// его отказ всплывал падением ЭПИЗОДА — Директор видел красный эпизод там, где
+// болен сериал.
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('buildPipelineSnapshot — строка канона серии', () => {
+  const canonRow = (canon?: Parameters<typeof buildPipelineSnapshot>[5]) =>
+    buildPipelineSnapshot('BRIEF_PENDING', [], [], null, undefined, canon)
+      .find((s) => s.id === 'series_canon')!;
+
+  it('без снимка канона строка молчит, а не врёт', () => {
+    const row = canonRow();
+    expect(row.state).toBe('idle');
+    expect(row.progress).toBeUndefined();
+  });
+
+  it('канон не готов → строка БЛОКИРУЕТ и показывает счётчик запертых плит', () => {
+    const row = canonRow({
+      plates: [], locked: 1, total: 4, productionReady: false,
+      blockers: ['нет ни одного LOCKED стиля'],
+    });
+    expect(row.state).toBe('blocked');
+    expect(row.progress).toEqual({ done: 1, total: 4 });
+  });
+
+  it('канон готов → зелёная, даже когда не все плиты заперты', () => {
+    const row = canonRow({
+      plates: [], locked: 2, total: 5, productionReady: true, blockers: [],
+    });
+    expect(row.state).toBe('approved');
+    expect(row.progress).toEqual({ done: 2, total: 5 });
+  });
+
+  it('строка объявлена ВВОДОМ уровня сериала, а не работой агента', () => {
+    const row = canonRow();
+    expect(row.role).toBe('input');
+    expect(row.phase).toBe('pre-production');
+    expect(row.agents).toEqual(['Director']);
   });
 });

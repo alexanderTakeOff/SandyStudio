@@ -25,29 +25,23 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { Database } from './supabase/types.gen';
-import type { AgentId } from './agents/types';
 
 const PG_UNIQUE_VIOLATION = '23505';
 
 /**
- * Actors that spend money but are NOT pipeline agents (2026-07-25).
+ * Кто может стоять в `budget_log.agent_id`.
  *
- * `budget_log.agent_id` is a plain text column — the `AgentId` union is a TS-side
- * constraint on this module, and it exists to describe agents that have a gate
- * spec, a registry entry and an output file type. An advisory critic fired from a
- * Director button has none of those, so adding it to `AgentId` would force four
- * exhaustive maps to invent entries for a stage that does not exist.
+ * Раньше это был `AgentId | LedgerActorId` — союз двадцати с лишним идентификаторов ролей
+ * конвейера, и ради него леджер (ценное ядро) импортировал типы слоя агентов, который
+ * подлежит сносу. Колонка в базе всегда была обычным текстом: союз ограничивал не данные,
+ * а только этот модуль, и при появлении каждого нового тратящего — советующего критика,
+ * прямого вызова `DIRECT-RUN`, единого разума — требовал вписать его в реестр стадий,
+ * которой у него нет.
  *
- * The ledger's question is narrower — "who spent this?" — so it accepts these
- * cost-only actors alongside real agents. Keep the list short: anything that
- * genuinely belongs in the pipeline belongs in `AgentId` instead.
+ * Ф1 новой парадигмы (2026-08-07): тип стал тем, чем колонка была всегда. Кто потратил —
+ * это ЗАПИСЬ о факте, а не членство в конвейере.
  */
-export type LedgerActorId =
-  /** Post-render Visual Critic (lib/agents/runners/visual-shot-critic.ts). */
-  | 'EXEC-VCRIT';
-
-/** Anything that may appear in `budget_log.agent_id`. */
-export type BudgetActorId = AgentId | LedgerActorId;
+export type BudgetActorId = string;
 
 /**
  * Default per-episode budget ceiling in USD (Director 2026-07-06 — applied at
@@ -271,7 +265,7 @@ export interface RecordCostInput {
    */
   jobId: string | null;
   episodeId: string | null;
-  /** Pipeline agent, or a cost-only actor (see `LedgerActorId`). */
+  /** Кто потратил: роль конвейера, прямой вызов или единый разум — свободная строка. */
   agentId: BudgetActorId;
   costUsd: number;
   /** "anthropic" | "fal_ai" | "youtube" | "mock" — for budget_log analysis. */

@@ -28,7 +28,7 @@ import {
   generateAnthropicText,
   AnthropicTextError,
   type AnthropicTextResult,
-} from '../providers/anthropic-text';
+} from '../../providers/anthropic-text';
 import { seriesIdForEpisode, bibleSlug } from '../../api/series-bible';
 import { loadEpisodeCastSlugs } from '../episode-cast';
 import { continuityLedgerEnabled } from '../chain-flags';

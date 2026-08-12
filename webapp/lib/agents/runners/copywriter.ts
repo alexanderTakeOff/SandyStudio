@@ -10,10 +10,10 @@ import {
   generateAnthropicText,
   AnthropicTextError,
   type AnthropicTextResult,
-} from '../providers/anthropic-text';
+} from '../../providers/anthropic-text';
 import type { SeriesBibleCanon } from '../bible-loader';
 import type { AgentInputs } from '../types';
-import type { CopyBranding } from '../branding';
+import type { CopyBranding } from '../../branding';
 import { findApprovedAsset } from '../upstream';
 
 export const COPY_CONTRACT = 'copywriter@v1';

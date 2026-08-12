@@ -42,8 +42,8 @@ function jsonContent(body: Record<string, unknown>): string {
   return ['# Doc', '```json', JSON.stringify(body), '```'].join('\n');
 }
 
-describe('SCR-script approval — SREV is critic-chain-only', () => {
-  it('fires EXEC-COPY but never exec-srev', async () => {
+describe('SCR-script approval — ни критика, ни публициста (Директор 061, 2026-08-10)', () => {
+  it('не запускает ни exec-copy, ни exec-srev', async () => {
     const { client } = mockSupabase({ assets: [], jobs: [] });
     const asset: AssetForChain = {
       id: 'scr-1',
@@ -54,7 +54,7 @@ describe('SCR-script approval — SREV is critic-chain-only', () => {
     };
     const events = await computeNextEvents(client, asset, 'director-1');
     const names = events.map((e) => e.name);
-    expect(names).toContain('sandystudio/exec-copy/write-metadata');
+    expect(names).not.toContain('sandystudio/exec-copy/write-metadata');
     expect(names).not.toContain('sandystudio/exec-srev/review-script');
   });
 
@@ -112,7 +112,9 @@ describe('Brief → Casting → Writer gate (2026-06-23, q22a/q30a)', () => {
     expect(nudges).toHaveLength(0);
   });
 
-  it('Director mode: Casting APPROVED fires the Writer with the approved brief id', async () => {
+  // Директор 061, 2026-08-10: ратификация каста больше НЕ поднимает Writer.
+  // Сценарий пишет ум; автостарт EXEC-SW снят вместе с критик-цепочкой SREV.
+  it('Casting APPROVED НЕ запускает Writer — сценарий пишет ум', async () => {
     const { client } = mockSupabase({
       assets: [{ id: 'brief-1', episode_id: EP, file_type: 'SPC-brief', status: 'APPROVED' }],
       jobs: [],
@@ -125,9 +127,7 @@ describe('Brief → Casting → Writer gate (2026-06-23, q22a/q30a)', () => {
       updated_at: '2026-06-23T00:00:00Z',
     };
     const events = await computeNextEvents(client, cast, 'director-1');
-    const fires = events.filter((e) => e.name === 'sandystudio/exec-sw/write-script');
-    expect(fires).toHaveLength(1);
-    expect(fires[0].data.briefAssetId).toBe('brief-1');
+    expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-sw/write-script');
   });
 });
 

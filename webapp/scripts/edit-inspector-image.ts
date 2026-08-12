@@ -6,7 +6,7 @@ for (const raw of readFileSync('.env.local', 'utf-8').split('\n')) {
   if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
   process.env[l.slice(0, e).trim()] = v;
 }
-import { openAIEditsMultiProvider } from '../lib/agents/providers/openai-edits-multi';
+import { openAIEditsMultiProvider } from '../lib/providers/openai-edits-multi';
 const SRC = 'scripts/_inspector_current.png';
 const OUT = process.env.OUT || 'scripts/_inspector_candidate.png';
 const PROMPT = `Canonical character reference sheet for "Inspector Stopwatch", a cartoon anthropomorphic hand-held stopwatch. Keep the ENTIRE image identical — same chrome stopwatch body, blue rim, cream dial with tick marks, the two gold sweep-hands (his mustache), red shoes, legs, the sky-blue lanyard badge, the clipboard with pencil, the same colours, outline style, pose and composition — and make ONLY these two additions:

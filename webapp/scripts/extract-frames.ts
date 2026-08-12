@@ -12,7 +12,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { resolve, dirname, basename, extname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
-import { resolveFfmpegPath, probeDurationSeconds } from '../lib/agents/providers/ffmpeg-stitch';
+import { resolveFfmpegPath, probeDurationSeconds } from '../lib/providers/ffmpeg-stitch';
 
 async function probeFfmpegBin(): Promise<string> {
   const bin = await resolveFfmpegPath();

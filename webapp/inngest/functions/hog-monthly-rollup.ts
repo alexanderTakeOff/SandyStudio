@@ -9,7 +9,7 @@
 
 import { inngest } from '@/lib/inngest/client';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
-import { aggregateMonthly, type MemoryRow } from '@/lib/agents/hog-memory-rollup';
+import { aggregateMonthly, type MemoryRow } from '@/lib/hog-memory-rollup';
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 

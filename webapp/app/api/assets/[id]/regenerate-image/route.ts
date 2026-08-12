@@ -34,8 +34,8 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
-import { generateImageOpenAI } from '@/lib/agents/providers/openai-image';
-import { persistBinary } from '@/lib/agents/persist-binary';
+import { generateImageOpenAI } from '@/lib/providers/openai-image';
+import { persistBinary } from '@/lib/persist-binary';
 import { runStyleCheck } from '@/lib/agents/runners/style-check';
 import { getStyleGuardianMode } from '@/lib/api/style-guardian-config';
 import { resolveBibleImageSize } from '@/lib/api/bible-image-size';
@@ -63,9 +63,9 @@ import {
 import {
   getImageGenMultiProvider,
   hasProviderEnv,
-} from '@/lib/agents/providers/image-gen-multi-registry';
+} from '@/lib/providers/image-gen-multi-registry';
 import type { EREFProviderId } from '@/lib/api/eref-config';
-import type { MultiImageRef } from '@/lib/agents/providers/image-gen-multi';
+import type { MultiImageRef } from '@/lib/providers/image-gen-multi';
 import { readAssetMediaAsBase64, localCacheAbsPath } from '@/lib/media-cache';
 import { assembleBibleImageRequest, type DroppedRef } from '@/lib/agents/series-canon-refs';
 import { promises as fsp } from 'node:fs';

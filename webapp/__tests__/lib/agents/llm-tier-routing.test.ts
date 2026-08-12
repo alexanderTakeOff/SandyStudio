@@ -4,8 +4,8 @@
 // TEXT_LLM_DEBUG_TIER kill-switch (Mode-4 smokes) frees everything.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { wantsGeminiFreeTier } from '@/lib/agents/providers/anthropic-text';
-import { checkersFreeTierEnabled } from '@/lib/agents/chain-flags';
+import { wantsGeminiFreeTier } from '@/lib/providers/anthropic-text';
+import { checkersFreeTierEnabled } from '@/lib/providers/anthropic-text';
 
 const ENV_KEYS = ['TEXT_LLM_DEBUG_TIER', 'CHECKERS_FREE_TIER'] as const;
 const ORIGINAL: Record<string, string | undefined> = {};

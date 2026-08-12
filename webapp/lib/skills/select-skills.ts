@@ -13,7 +13,23 @@ import path from 'node:path';
 import { loadSkillFile, type LoadedSkill, type SkillManifest, type AppliesWhen } from './load-skill-file';
 
 export interface SelectorContext {
-  agent?: string;
+  /**
+   * Роль, от имени которой идёт выборка. СПИСОК ролей (2026-08-08) — для единого
+   * ума, который собой заменяет всех маленьких агентов сразу и потому обязан
+   * видеть репертуар их всех.
+   *
+   * Почему это понадобилось: роут ума звал селектор БЕЗ `agent`, а все ACTIVE-скиллы
+   * на диске объявляют `applies_when.agent` — `fieldMatches` при заданном скоупе и
+   * пустом контексте отдаёт false, поэтому ум получал РОВНО НОЛЬ скиллов и работал
+   * без ремесла студии (корень D76: сториборд без контракта `storyboarder@v2`,
+   * потому что `storyboarder-cosmic-horror` ему не выдали).
+   *
+   * Список, а не снятие скоупа: снятие пустило бы `sandy-gag-library`
+   * (`genre:[comedy]`, Sandy-специфичный) в cosmic_horror. Остальные оси
+   * (`genre`/`series_id`/`episode_id`) продолжают фильтровать как раньше — именно
+   * они держат изоляцию каналов.
+   */
+  agent?: string | readonly string[];
   genre?: string;
   series_id?: string;
   episode_id?: string;
@@ -22,6 +38,11 @@ export interface SelectorContext {
 }
 
 const CACHE_TTL_MS = 30_000;
+/**
+ * Квота под МАЛЕНЬКУЮ модель старого мира. Для единого ума она снята (доктрина
+ * §21: «большой ум читает сколько нужно») — он передаёт `limit: Infinity`.
+ * Умолчание держит старых вызывающих без изменений до Ф6.
+ */
 const MAX_SKILLS_PER_CALL = 5;
 
 /**
@@ -98,12 +119,18 @@ async function scanSkillsDir(): Promise<ScanResult> {
 }
 
 function fieldMatches(
-  ctxValue: string | undefined,
+  ctxValue: string | readonly string[] | undefined,
   required: readonly string[] | undefined,
 ): boolean {
   if (!required || required.length === 0) return true;
   if (!ctxValue) return false;
-  return required.includes(ctxValue);
+  // Список в контексте (единый ум = много ролей сразу) — совпадение по ЛЮБОЙ из
+  // них: скилл подходит, если он адресован хоть одной роли, которую ум играет.
+  if (Array.isArray(ctxValue)) {
+    if (ctxValue.length === 0) return false;
+    return ctxValue.some((v) => required.includes(v));
+  }
+  return required.includes(ctxValue as string);
 }
 
 function predicateMatches(applies: AppliesWhen | undefined, ctx: SelectorContext): boolean {
@@ -149,7 +176,10 @@ async function getCache(): Promise<CacheEntry> {
   return cache;
 }
 
-async function selectSkillsRanked(ctx: SelectorContext): Promise<readonly LoadedSkill[]> {
+async function selectSkillsRanked(
+  ctx: SelectorContext,
+  limit: number = MAX_SKILLS_PER_CALL,
+): Promise<readonly LoadedSkill[]> {
   const entry = await getCache();
 
   const matches = entry.skills.filter(
@@ -163,7 +193,7 @@ async function selectSkillsRanked(ctx: SelectorContext): Promise<readonly Loaded
     return specificityScore(b.frontmatter.applies_when) - specificityScore(a.frontmatter.applies_when);
   });
 
-  return matches.slice(0, MAX_SKILLS_PER_CALL);
+  return Number.isFinite(limit) ? matches.slice(0, limit) : matches;
 }
 
 /**
@@ -181,8 +211,11 @@ export async function selectSkills(ctx: SelectorContext): Promise<readonly Loade
  * metadata (no body). Used by agent runners and PA to expose the available
  * capability repertoire without burning context budget on bodies.
  */
-export async function listSkillManifests(ctx: SelectorContext): Promise<readonly SkillManifest[]> {
-  const ranked = await selectSkillsRanked(ctx);
+export async function listSkillManifests(
+  ctx: SelectorContext,
+  opts?: { limit?: number },
+): Promise<readonly SkillManifest[]> {
+  const ranked = await selectSkillsRanked(ctx, opts?.limit);
   return ranked.map((s) => ({
     slug: s.slug,
     filePath: s.filePath,

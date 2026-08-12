@@ -8,7 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import { readFile } from 'node:fs/promises';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { persistBinary, type BinaryExt } from '../lib/agents/persist-binary';
+import { persistBinary, type BinaryExt } from '../lib/persist-binary';
 import { localCacheAbsPath } from '../lib/media-cache';
 
 const envPath = resolve(process.cwd(), '.env.local');

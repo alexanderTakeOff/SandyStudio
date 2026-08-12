@@ -13,7 +13,7 @@
 import type { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions';
 import { createConciergeClient, conciergeModel } from '@/lib/concierge/llm';
 import { openaiSchemas } from '@/lib/concierge/tools';
-import { computeCostUsd } from '@/lib/agents/providers/anthropic-text';
+import { computeCostUsd } from '@/lib/providers/anthropic-text';
 import {
   createConciergeCompletion,
   type ConciergeCompletion,

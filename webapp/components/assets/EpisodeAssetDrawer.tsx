@@ -21,6 +21,7 @@ import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
 import { withHardBreaks } from '@/lib/markdown-breaks';
 import { resolvePreviewSrc } from '@/lib/asset-preview-resolver';
+import { currentPromptEntry as pickCurrentPromptEntry } from '@/lib/asset-preview-resolver';
 import {
   Anchor,
   ArrowLeft,
@@ -65,7 +66,7 @@ import type {
 } from '@/lib/api/series-bible';
 
 // Provider IDs available for per-image regeneration override.
-// Hard-coded for MVP — kept in sync with lib/agents/providers/image-gen-multi-registry.ts.
+// Hard-coded for MVP — kept in sync with lib/providers/image-gen-multi-registry.ts.
 const PROVIDER_OPTIONS: Array<{ id: 'openai-edits-multi' | 'flux-pro-1.1-ultra'; label: string }> = [
   { id: 'openai-edits-multi', label: 'OpenAI Edits' },
   { id: 'flux-pro-1.1-ultra', label: 'Flux Pro 1.1 Ultra' },
@@ -588,7 +589,7 @@ export function EpisodeAssetDrawer({
       if ((h.source as string | undefined) === 'upscale') return false;
       return true;
     });
-    const cur = realEntry ?? promptDoc.history.find((h) => h.version === promptDoc.current_version);
+    const cur = realEntry ?? pickCurrentPromptEntry<ImagePromptHistoryEntry>(promptDoc);
     if (!cur || !cur.prompt || cur.prompt.startsWith('(upscale only')) {
       setError(
         'No real generation prompt found in history (only upscale stub). Open the "Image prompt" section and edit a prompt before regenerating.',

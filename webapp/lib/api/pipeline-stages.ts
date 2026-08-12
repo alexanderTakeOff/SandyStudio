@@ -25,6 +25,9 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 export type PipelineStageId =
+  // Уровень СЕРИИ, а не эпизода: канон один на сериал, но от него зависят шесть
+  // строк ниже, и до 2026-08-06 его отказ читался как отказ эпизода.
+  | 'series_canon'
   | 'casting'
   | 'brief'
   | 'screenwriter'
@@ -62,6 +65,8 @@ export type PipelineStageId =
   | 'publish'
   | 'analytics'
   | 'story';
+
+import type { CanonSnapshot } from './canon-stages';
 
 export type PipelineNodeState =
   | 'idle'
@@ -136,6 +141,17 @@ export interface PipelineStageSnapshot {
   job_count?: { total: number; done: number; running: number; failed: number };
   /** Count of assets in this stage awaiting a Director decision (REVIEW / REVISION / NEEDS_HUMAN_TWEAK). */
   assets_in_review?: number;
+  /**
+   * PER-SHOT rows only: how many shots this stage has actually closed.
+   *
+   * These stages do not belong to the episode — they belong to the SHOT (the
+   * system's brick is the cell `shot × stage`). A single lamp over 24 cells lit
+   * up on the FIRST approved asset, so "1 of 24 done" read as "done" — and the
+   * code already carried a special case (`eref_pilot_state`) to patch exactly one
+   * of the six rows. The counter replaces the patch: the row says what it is,
+   * `done / total`, and only goes green when the last cell closes.
+   */
+  progress?: { done: number; total: number };
 }
 
 interface AssetLike {
@@ -149,6 +165,44 @@ interface AssetLike {
   description?: string | null;
   /** Optional — Plan/REV body parsed for verdict when description absent. */
   content?: string | null;
+  /** Optional — carries `shot_id` / `shot_reference.shot_id` for per-shot rows. */
+  metadata?: unknown;
+}
+
+/**
+ * Rows whose real object is the SHOT, not the episode. They report `done/total`
+ * instead of a single lamp. Kept as a named set so the rule is stated once and
+ * every future per-shot stage joins it by adding its id here.
+ *
+ * `series_canon` is NOT here on purpose: its object is the SERIES, and its
+ * counter is supplied from outside rather than counted from episode assets.
+ */
+const PER_SHOT_ROWS: ReadonlySet<PipelineStageId> = new Set<PipelineStageId>([
+  'reference_designer',
+  'reference_critic',
+  'episode_references',
+  'shot_designer',
+  'shot_critic',
+  'visual_generator',
+]);
+
+/**
+ * Which shot an asset belongs to. Three shapes exist in the wild and all three
+ * are live: video clips carry `metadata.shot_id`, reference images carry
+ * `metadata.shot_reference.shot_id`, and the direct-call tools encode it in the
+ * file type (`VID-shot-s15-e36-sh01`, `IMG-episode_ref_s15_e36_sh01`). Reading
+ * only the first is how a whole episode's work went uncounted.
+ */
+function shotKeyOf(asset: AssetLike): string | null {
+  const meta = asset.metadata as
+    | { shot_id?: unknown; shot_reference?: { shot_id?: unknown } | null }
+    | null
+    | undefined;
+  if (typeof meta?.shot_id === 'string' && meta.shot_id) return meta.shot_id.toUpperCase();
+  const ref = meta?.shot_reference?.shot_id;
+  if (typeof ref === 'string' && ref) return ref.toUpperCase();
+  const fromType = /(?:^|[_-])(sh\d{1,3})(?:[_-]|$)/i.exec(asset.file_type);
+  return fromType ? fromType[1].toUpperCase() : null;
 }
 
 interface JobLike {
@@ -195,12 +249,27 @@ interface RowDef {
 //
 // Music sits in production phase BEFORE Animatic (audio reorg LT-04): EDIT
 // gates on BOTH MGEN + EREF approved so the animatic preview plays with music.
-const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
+/**
+ * Экспортируется с 2026-08-08 (D86) — промпт единого ума строит карту конвейера
+ * ИЗ ЭТОГО массива, а не из своего пересказа. Второй список станций разошёлся бы
+ * с первым на первой же правке конвейера, и ум учил бы маршрут, которого нет.
+ */
+export const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
   // Brief → Casting → Writer (2026-06-23, Director q22a/q30a): Casting comes
   // AFTER the brief — once the brief is set it's clear which characters/objects
   // the episode needs. (Was casting-before-brief.)
+  // Канон СЕРИИ — первая строка, потому что без него шесть строк ниже мертвы.
+  // Отдельная сущность, а не стадия эпизода: она объясняет, почему Reference
+  // Artist упадёт, ДО того как он упадёт (решение Директора 20, 2026-08-06).
+  { id: 'series_canon',        label: 'Канон серии',       subtitle: 'уровень сериала',      agents: ['Director'],   phase: 'pre-production', tier: 'primary', role: 'input',    emoji: '📚' },
   { id: 'brief',               label: 'Brief',             agents: ['Director'],            phase: 'pre-production', tier: 'primary', role: 'input',     emoji: '🎬' },
-  { id: 'casting',             label: 'Casting',           subtitle: 'Production Designer',  agents: ['ART-AD'],     phase: 'pre-production', tier: 'primary', role: 'designer', emoji: '🎭' },
+  // 2026-08-06 — Casting is NOT an agent. `ART-AD` exists in no registry and has
+  // no runner; the cast is a plain POST route that inserts the slugs the caller
+  // chose, with no model call anywhere. Calling it a Production Designer implied
+  // a worker that never existed. It stays visible — the cast gates the Writer and
+  // the Storyboard Artist, so hiding it would blind the studio to a real input —
+  // but it is declared for what it is: the Director's choice, like the Brief.
+  { id: 'casting',             label: 'Casting',           subtitle: 'выбор Директора',      agents: ['Director'],   phase: 'pre-production', tier: 'primary', role: 'input',    emoji: '🎭' },
   { id: 'screenwriter',        label: 'Writer',            agents: ['EXEC-SW'],             phase: 'pre-production', tier: 'primary', role: 'author',    emoji: '✍️' },
   { id: 'script_critic',       label: 'Script Critic',     subtitle: 'Story Editor',        agents: ['EXEC-SREV'],   phase: 'pre-production', tier: 'muted',   role: 'critic',  serves: 'screenwriter', emoji: '🔍' },
   { id: 'storyboarder',        label: 'Storyboard Artist', agents: ['EXEC-SB'],             phase: 'production',     tier: 'primary', role: 'author',    emoji: '🎬' },
@@ -208,11 +277,19 @@ const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
   // Was invisible in the pipeline view — REV-readability had no row/asset mapping,
   // so a REVISE verdict silently gated the Reference Artist (Director 2026-07-04).
   { id: 'readability_critic',  label: 'Readability Critic', subtitle: 'Comedy Editor',       agents: ['EXEC-CREAD'],  phase: 'production',     tier: 'muted',   role: 'critic',  serves: 'storyboarder', emoji: '📖' },
-  { id: 'continuity_critic',   label: 'Continuity Critic', subtitle: 'Script Supervisor',   agents: ['EXEC-CONT'],   phase: 'production',     tier: 'muted',   role: 'critic',  serves: 'storyboarder', emoji: '🌍' },
+  // The row was named after `EXEC-CONT`, an agent that exists in no registry and
+  // never shipped. The work is done by `EXEC-WCHK`, aliased in silently below —
+  // so the row named a ghost while a real worker filled it. Named for the worker
+  // that actually runs (2026-08-06).
+  { id: 'continuity_critic',   label: 'Continuity Critic', subtitle: 'Script Supervisor',   agents: ['EXEC-WCHK'],   phase: 'production',     tier: 'muted',   role: 'critic',  serves: 'storyboarder', emoji: '🌍' },
   { id: 'reference_designer',  label: 'Reference Designer', agents: ['EXEC-EREF-DESIGNER'], phase: 'production',     tier: 'muted',   role: 'designer', serves: 'episode_references', emoji: '🧠' },
   { id: 'reference_critic',    label: 'Reference Critic',  agents: ['EXEC-EPREV'],          phase: 'production',     tier: 'muted',   role: 'critic',  serves: 'episode_references', emoji: '🧐' },
   { id: 'episode_references',  label: 'Reference Artist',  agents: ['EXEC-EREF'],           phase: 'production',     tier: 'primary', role: 'artist',   emoji: '🖼️' },
-  { id: 'music_generator',     label: 'Composer',          agents: ['EXEC-MGEN'],           phase: 'production',     tier: 'primary', role: 'artist',   emoji: '🎵' },
+  // Composer generates nothing: `case 'EXEC-MGEN'` in the runner unconditionally
+  // returns `mockMusic()` — a stub with zero cost and a template path. Every real
+  // track arrives by the Director's upload, which writes an APPROVED `AUD-music`
+  // row past the agent entirely. Declared as what it is: a gate the human fills.
+  { id: 'music_generator',     label: 'Музыка',            subtitle: 'загрузка Директора',  agents: ['Director'],    phase: 'production',     tier: 'primary', role: 'input',    emoji: '🎵' },
   { id: 'animatic',            label: 'Editor',            agents: ['EXEC-EDIT'],           phase: 'production',     tier: 'primary', role: 'editor',   emoji: '🎞️' },
   { id: 'shot_designer',       label: 'Video Designer',    agents: ['EXEC-VANIM'],          phase: 'generation',     tier: 'muted',   role: 'designer', serves: 'visual_generator', emoji: '📝' },
   { id: 'shot_critic',         label: 'Video Critic',      agents: ['EXEC-VPREV'],          phase: 'generation',     tier: 'muted',   role: 'critic',  serves: 'visual_generator', emoji: '🧐' },
@@ -220,7 +297,6 @@ const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
   { id: 'final_cut',           label: 'Online Editor',     agents: ['EXEC-STITCH'],         phase: 'generation',     tier: 'primary', role: 'editor',   emoji: '🎬' },
   { id: 'copywriter',          label: 'Publicist',         agents: ['EXEC-COPY'],           phase: 'distribution',   tier: 'primary', role: 'author',    emoji: '📝' },
   { id: 'thumbnail_designer',  label: 'Key Art Designer',  agents: ['EXEC-THUMB-DESIGNER'], phase: 'distribution',   tier: 'muted',   role: 'designer', serves: 'thumbnail_creator', emoji: '🎨' },
-  { id: 'thumbnail_critic',    label: 'Key Art Critic',    subtitle: 'not staffed',         agents: [],              phase: 'distribution',   tier: 'muted',   role: 'critic',  serves: 'thumbnail_creator', emoji: '🧐', unstaffed: true },
   { id: 'thumbnail_creator',   label: 'Key Art Artist',    agents: ['EXEC-THUMB'],          phase: 'distribution',   tier: 'primary', role: 'artist',   emoji: '🖼️' },
   { id: 'publisher',           label: 'Distribution',      agents: ['EXEC-PUB'],            phase: 'distribution',   tier: 'primary', role: 'publisher', emoji: '🚀' },
   { id: 'analytics_collector', label: 'Audience Analyst',  agents: ['EXEC-ANAL'],           phase: 'analytics',      tier: 'primary', role: 'analyst',  emoji: '📊' },
@@ -253,7 +329,13 @@ const STAGE_FROM_ASSET = (asset: AssetLike): PipelineStageId | null => {
   return null;
 };
 
-const STAGE_FROM_AGENT: Record<string, PipelineStageId> = {
+/**
+ * Карта агент→стадия. ЕДИНСТВЕННЫЙ второй источник стадии, и он временный:
+ * читается только когда работу вела роль конвейера. Всё, что производит единый
+ * ум, находит свою стадию по префиксу `file_type` без неё (`STAGE_FROM_ASSET`).
+ * Уходит в Ф6 вместе с `jobs`; экспортирован ради `pipeline-conveyor.ts`.
+ */
+export const STAGE_FROM_AGENT: Record<string, PipelineStageId> = {
   'ART-AD':     'casting',
   'Director':   'brief',
   'EXEC-SW':    'screenwriter',
@@ -325,8 +407,28 @@ export interface EpisodeMetadataForPipeline {
 export function buildPipelineSnapshot(
   episodeStatus: string,
   assets: AssetLike[],
-  jobs: JobLike[],
+  /**
+   * Задания — ТОЛЬКО для «крутится / упало». Стадия из них не выводится и без них
+   * не теряется: цвет даёт ассет нужного префикса. Поэтому список НЕОБЯЗАТЕЛЕН —
+   * единый ум строк `jobs` не создаёт (таблица требует `agent_id` и
+   * `inngest_event`, то есть агент-образна по конструкции), и витрина обязана
+   * говорить правду и без них. Ф2 новой парадигмы, 2026-08-07.
+   */
+  jobs: JobLike[] = [],
   episodeMetadata?: EpisodeMetadataForPipeline | null,
+  /**
+   * How many shots the episode has, from the storyboard / animatic shot list.
+   * Optional: callers that do not know it get today's behaviour unchanged.
+   * When known, per-shot rows report `done/total` and stay short of green until
+   * the last shot closes.
+   */
+  shotCount?: number,
+  /**
+   * Состояние канона СЕРИИ (`buildCanonSnapshot`). Опционально: без него строка
+   * канона ведёт себя как обычная — тихо и неинформативно. С ним она называет
+   * отказ на уровне сериала, вместо того чтобы он всплыл падением эпизода.
+   */
+  canon?: CanonSnapshot | null,
 ): PipelineStageSnapshot[] {
   const assetsByStage = new Map<PipelineStageId, AssetLike[]>();
   for (const a of assets) {
@@ -368,7 +470,29 @@ export function buildPipelineSnapshot(
     // orange "running" over green "approved" was misleading (Director saw
     // 3 approved Final Cuts but row stayed orange because of a stale or
     // in-flight STITCH job). A blocked/review state still beats running.
-    if (hasApprovedAsset) {
+    // PER-SHOT rows count cells, not lamps. `done` is how many distinct shots
+    // have a closed asset here; green waits for the last one. Without a known
+    // shot count we cannot say `n/N`, so behaviour falls back to the old rule.
+    const isPerShot = PER_SHOT_ROWS.has(def.id);
+    let progress: { done: number; total: number } | undefined;
+    if (isPerShot && typeof shotCount === 'number' && shotCount > 0) {
+      const closed = new Set<string>();
+      for (const a of stageAssets) {
+        if (a.status !== 'APPROVED' && a.status !== 'LOCKED') continue;
+        const key = shotKeyOf(a);
+        if (key) closed.add(key);
+      }
+      progress = { done: closed.size, total: shotCount };
+    }
+
+    if (progress) {
+      // A stage that has closed every shot is done; anything less is work in
+      // progress, however many assets it has produced.
+      if (progress.done >= progress.total) state = 'approved';
+      else if (hasReviewAsset) state = 'blocked';
+      else if (hasRunningJob || progress.done > 0) state = 'running';
+      else if (hasFailedJob) state = 'failed';
+    } else if (hasApprovedAsset) {
       state = 'approved';
     } else if (hasReviewAsset) {
       state = 'blocked';
@@ -387,7 +511,12 @@ export function buildPipelineSnapshot(
     // on a stage that has produced only 2/24 references. Same trap from
     // the opposite direction: "pilots in REVIEW + fan-out running" is
     // PRODUCTIVE work, not `blocked`.
-    if (def.id === 'episode_references') {
+    //
+    // 2026-08-06 — this is the patch the counter replaces. It was written for
+    // ONE of the six per-shot rows because that one hurt first; the counter
+    // covers all six by construction. Kept only for callers that cannot supply
+    // a shot count — when `progress` exists it already says the truth.
+    if (def.id === 'episode_references' && !progress) {
       const pilotState = episodeMetadata?.eref_pilot_state;
       if (pilotState === 'PENDING_REVIEW') {
         state = 'blocked';
@@ -395,6 +524,18 @@ export function buildPipelineSnapshot(
         state = 'running';
       }
       // FANOUT_COMPLETE / NONE: fall through to default rule above.
+    }
+
+    // Канон СЕРИИ живёт не в ассетах эпизода — его состояние приносит вызывающий.
+    // Строка красная, когда сериалу нечем снимать, и это единственное место, где
+    // такой отказ виден ДО падения эпизодной стадии.
+    if (def.id === 'series_canon') {
+      if (canon) {
+        progress = { done: canon.locked, total: canon.total };
+        state = canon.productionReady ? 'approved' : 'blocked';
+      } else {
+        state = 'idle';
+      }
     }
 
     if (def.id === 'brief' && status === 'BRIEF_APPROVED') state = 'approved';
@@ -425,6 +566,7 @@ export function buildPipelineSnapshot(
       latest_asset_id: latest?.id,
       latest_asset_type: latest?.file_type,
       latest_verdict,
+      ...(progress ? { progress } : {}),
       assets_in_review: stageAssets.filter((a) => AWAITING_DIRECTOR_STATUSES.has(a.status)).length,
       job_count: {
         total: stageJobs.length,
@@ -436,211 +578,6 @@ export function buildPipelineSnapshot(
   });
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Per-shot LIVE work phase (EpisodeTimeline q4a — 2026-06-22).
-//
-// The timeline strip colours each shot cell by the work happening on THAT shot
-// right now: a RUNNING/QUEUED job whose `input_snapshot.shotId` matches the cell.
-// We reuse STAGE_FROM_AGENT (the single source of truth for agent→stage) and
-// fold its stages into two visible groups the Director cares about:
-//   - 'design'  — the reference is being produced (Reference Designer/Critic/Artist)
-//   - 'animate' — the video is being produced (Video Designer/Critic/Artist)
-// Colour + pulse live entirely in the UI; this module only classifies.
-// ──────────────────────────────────────────────────────────────────────────────
-
-/** Visible per-shot work group for the live timeline overlay. */
-export type WorkPhase = 'design' | 'animate';
-
-/** Stages that mean "the reference is being made" → blue. */
-const DESIGN_STAGE_IDS: ReadonlySet<PipelineStageId> = new Set<PipelineStageId>([
-  'reference_designer', // EXEC-EREF-DESIGNER
-  'reference_critic',   // EXEC-EPREV
-  'episode_references', // EXEC-EREF
-]);
-
-/** Stages that mean "the video is being made" → violet. */
-const ANIMATE_STAGE_IDS: ReadonlySet<PipelineStageId> = new Set<PipelineStageId>([
-  'shot_designer',    // EXEC-VANIM
-  'shot_critic',      // EXEC-VPREV
-  'visual_generator', // EXEC-VGEN
-]);
-
-/**
- * Map an agent id to its live work phase for the timeline overlay, or null if
- * the agent is not part of either per-shot group. Derived from STAGE_FROM_AGENT
- * so the agent→group mapping has exactly one source of truth.
- */
-export function workPhaseForAgent(agentId: string): WorkPhase | null {
-  const stage = STAGE_FROM_AGENT[agentId];
-  if (!stage) return null;
-  if (ANIMATE_STAGE_IDS.has(stage)) return 'animate';
-  if (DESIGN_STAGE_IDS.has(stage)) return 'design';
-  return null;
-}
-
-/** Minimal job shape needed to attribute live work to a shot. */
-export interface JobForShotPhase {
-  agent_id: string;
-  status: string;
-  input_snapshot: unknown;
-}
-
-/** Read the canonical shot_id the factory stamps into every per-shot job. */
-function snapshotShotId(snapshot: unknown): string | null {
-  if (!snapshot || typeof snapshot !== 'object') return null;
-  const sid = (snapshot as { shotId?: unknown }).shotId;
-  return typeof sid === 'string' && sid.length > 0 ? sid : null;
-}
-
-/**
- * Pure: build `shot_id → active WorkPhase` from the episode's jobs. Only
- * RUNNING/QUEUED jobs count (work happening right now). When both a design and
- * an animate job are live for the same shot, 'animate' wins — Director priority
- * q4a (video-artist over designer). The returned shot_id values are the
- * canonical form matching `AnimaticContract.shot_list[].shot_id`.
- */
-export function activeWorkPhaseByShot(
-  jobs: ReadonlyArray<JobForShotPhase>,
-): Map<string, WorkPhase> {
-  const map = new Map<string, WorkPhase>();
-  for (const j of jobs) {
-    if (j.status !== 'RUNNING' && j.status !== 'QUEUED') continue;
-    const phase = workPhaseForAgent(j.agent_id);
-    if (!phase) continue;
-    const shotId = snapshotShotId(j.input_snapshot);
-    if (!shotId) continue;
-    // 'animate' is dominant — never let a 'design' job downgrade it.
-    if (map.get(shotId) === 'animate') continue;
-    map.set(shotId, phase);
-  }
-  return map;
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Unified work-state language (2026-07-02) — one visual vocabulary shared by the
-// References and Video pipelines (they are the SAME shape: Designer → Critic →
-// Artist). The three questions a glance must answer:
-//   1. WHICH object?  → References vs Video (answered by POSITION: the object's
-//      button / the cell's R·V indicator — NOT by colour).
-//   2. WHICH stage / WHO is working?  → answered by COLOUR (role), below.
-//   3. Is it working?  → answered by the PULSE (running) vs solid (settled).
-// Colour = role (designer / critic / both / artist-generating); position = object.
-// ──────────────────────────────────────────────────────────────────────────────
-
-/** Who is working on a shot right now — finer than WorkPhase (which is object). */
-export type WorkRole = 'designer' | 'critic' | 'artist';
-
-/** Stage → role, for the two per-shot pipelines (references + video). */
-const ROLE_OF_STAGE: Partial<Record<PipelineStageId, WorkRole>> = {
-  reference_designer: 'designer',
-  reference_critic: 'critic',
-  episode_references: 'artist',
-  shot_designer: 'designer',
-  shot_critic: 'critic',
-  visual_generator: 'artist',
-};
-
-/** Map an agent id to its work ROLE (designer/critic/artist), or null. */
-export function workRoleForAgent(agentId: string): WorkRole | null {
-  const stage = STAGE_FROM_AGENT[agentId];
-  if (!stage) return null;
-  return ROLE_OF_STAGE[stage] ?? null;
-}
-
-/** Live work on one shot: which object + which roles are running right now. */
-export interface ShotWork {
-  object: WorkPhase;
-  roles: WorkRole[];
-}
-
-/**
- * Pure: build `shot_id → { object, roles }` from the episode's jobs. Only
- * RUNNING/QUEUED jobs count. Extends `activeWorkPhaseByShot` with role detail so
- * the timeline can answer "who's working" (designer / critic / both / artist),
- * not just "which object". 'animate' remains the dominant object (q4a priority).
- */
-export function activeWorkByShot(
-  jobs: ReadonlyArray<JobForShotPhase>,
-): Map<string, ShotWork> {
-  const acc = new Map<string, { object: WorkPhase; roles: Set<WorkRole> }>();
-  for (const j of jobs) {
-    if (j.status !== 'RUNNING' && j.status !== 'QUEUED') continue;
-    const object = workPhaseForAgent(j.agent_id);
-    const role = workRoleForAgent(j.agent_id);
-    if (!object || !role) continue;
-    const shotId = snapshotShotId(j.input_snapshot);
-    if (!shotId) continue;
-    const cur = acc.get(shotId);
-    if (cur) {
-      if (object === 'animate') cur.object = 'animate'; // animate dominant
-      cur.roles.add(role);
-    } else {
-      acc.set(shotId, { object, roles: new Set([role]) });
-    }
-  }
-  const out = new Map<string, ShotWork>();
-  for (const [k, v] of acc) out.set(k, { object: v.object, roles: [...v.roles] });
-  return out;
-}
-
-/**
- * Pure: build `shot_id → { object, roles }` for shots whose designer / critic /
- * artist job has COMPLETED and which have NO active (RUNNING/QUEUED) job right
- * now. Powers the D7 "persistent trail" — a settled, non-pulsing glow that keeps
- * a finished shot visibly marked instead of snapping back to neutral the instant
- * its job leaves the RUNNING set (Director: «glow гаснет мгновенно, хочу след»).
- * Live work always wins (checked first at the call-site), and a shot claimed by
- * `activeWorkByShot` is excluded here so the two maps never both own one shot.
- */
-export function completedWorkByShot(
-  jobs: ReadonlyArray<JobForShotPhase>,
-): Map<string, ShotWork> {
-  // Shots with any live job belong to activeWorkByShot — exclude them so the
-  // completed trail never fights the live pulse.
-  const liveShots = new Set<string>();
-  for (const j of jobs) {
-    if (j.status !== 'RUNNING' && j.status !== 'QUEUED') continue;
-    if (!workRoleForAgent(j.agent_id)) continue;
-    const shotId = snapshotShotId(j.input_snapshot);
-    if (shotId) liveShots.add(shotId);
-  }
-  const acc = new Map<string, { object: WorkPhase; roles: Set<WorkRole> }>();
-  for (const j of jobs) {
-    if (j.status !== 'COMPLETED') continue;
-    const object = workPhaseForAgent(j.agent_id);
-    const role = workRoleForAgent(j.agent_id);
-    if (!object || !role) continue;
-    const shotId = snapshotShotId(j.input_snapshot);
-    if (!shotId || liveShots.has(shotId)) continue;
-    const cur = acc.get(shotId);
-    if (cur) {
-      if (object === 'animate') cur.object = 'animate'; // animate dominant
-      cur.roles.add(role);
-    } else {
-      acc.set(shotId, { object, roles: new Set([role]) });
-    }
-  }
-  const out = new Map<string, ShotWork>();
-  for (const [k, v] of acc) out.set(k, { object: v.object, roles: [...v.roles] });
-  return out;
-}
-
-/**
- * Role detection for a set of live roles → a stable `token` + human `label`.
- * The COLOUR is no longer emitted here — under the kebab colour grammar
- * (2026-07-25) hue = family × role (see `stageRamp`/`rampStop` below), composed
- * at the call-site from this token. Node-safe (unit-testable).
- */
-export function workRolePalette(
-  roles: readonly WorkRole[],
-): { label: string; token: 'designer' | 'critic' | 'both' | 'artist' } {
-  const hasDesigner = roles.includes('designer');
-  const hasCritic = roles.includes('critic');
-  if (hasDesigner && hasCritic) return { token: 'both', label: 'Designer + Critic' };
-  if (hasCritic) return { token: 'critic', label: 'Critic' };
-  if (hasDesigner) return { token: 'designer', label: 'Designer' };
-  return { token: 'artist', label: 'Generating' };
-}
 
 // ── Kebab colour grammar (2026-07-25) — hue = family(temperature) × role, STABLE
 // per sub-step; status never writes hue. ❄️ Reference = cold ramp, 🔥 Video = warm.
@@ -687,3 +624,19 @@ export function stageIdentity(
       return null;
   }
 }
+
+// ── Ре-экспорт ролевого языка, пока он жив ────────────────────────────────────
+// Сам язык переехал в `pipeline-conveyor.ts` (Ф2, 2026-08-07) — он умирает вместе
+// с конвейером. Ре-экспорт держится, чтобы разделение по сроку жизни не потребовало
+// одновременно переписывать четыре UI-файла, которые в Ф6 удаляются целиком.
+// Новый код импортирует ИЗ `pipeline-conveyor` напрямую и тем объявляет, что
+// работает с обречённым слоем.
+export type { WorkPhase, WorkRole, ShotWork, JobForShotPhase } from './pipeline-conveyor';
+export {
+  workPhaseForAgent,
+  activeWorkPhaseByShot,
+  workRoleForAgent,
+  activeWorkByShot,
+  completedWorkByShot,
+  workRolePalette,
+} from './pipeline-conveyor';

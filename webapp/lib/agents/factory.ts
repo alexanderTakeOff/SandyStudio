@@ -58,7 +58,7 @@ import {
   isTerminalAgentFailure,
 } from './provider-failure';
 import { decideGate, recordGateDecision } from './gate-decision';
-import { resolveProvider, type ContractName, type ResolvedProvider } from './provider-resolver';
+import { resolveProvider, type ContractName, type ResolvedProvider } from '../provider-resolver';
 import type { AgentId } from './types';
 // The shared rich fan-out router — the SAME one the Director-driven approve
 // route uses. In the factory it's called by the plan-critic autofire (Modes 2/3,

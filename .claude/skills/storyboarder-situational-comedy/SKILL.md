@@ -6,9 +6,22 @@ owner: Director
 applies_when:
   agent: [EXEC-SB]
   genre: [comedy]
-hard: false
+hard: true
 created: 2026-05-16
 ---
+
+<!--
+2026-08-06 — `hard: false` → `hard: true`. Асимметрия, делавшая суд
+несправедливым: критик читаемости получал свой жанровый движок
+(`readability-comedy-slapstick`, hard: true) ПРИНУДИТЕЛЬНО, а автор раскадровки
+получал этот плейбук отбором модели — то есть жребием, и при потолке в пять
+скиллов на вызов мог не получить вовсе. СУДЬЯ ГАРАНТИРОВАННО ЗНАЛ ФОРМУЛУ,
+АВТОР — НЕТ. Отсюда и «single most-bounced readability failure (R02)»: автора
+разворачивали по формуле, которой ему не выдали.
+
+Правило: если критерий приёмки доставляется жёстко, мастерство, по которому
+судят, доставляется так же жёстко. Иначе брак закладывается на входе.
+-->
 
 # Storyboarder — Situational Comedy
 
@@ -189,9 +202,12 @@ short-target episode is an omission the readability critic will bounce back.
 surface. Sleeps entirely for a landscape-only episode.
 
 **Three constraints on a short-target storyboard:**
-1. **Hook in the first beat.** The most intriguing / "what goes wrong" frame lands in shot 1,
-   second 0-1 — no establishing runway, no slow build. The opening shot IS the hook; the first
-   ~10% of the clip is where the most viewers leave.
+1. **Hook in the first beat — two numbers, two different things** (Director, 2026-08-06,
+   decision 25; three files used to name three numbers and none agreed).
+   **MOVEMENT must read by second 1** — the opening shot is the hook, no establishing runway,
+   no slow build. **The SETUP must be understood by second 2** — what is at stake, whose
+   problem it is. The first ~10% of the clip is where the most viewers leave, and a static
+   opening frame spends exactly that window on nothing.
 2. **Tease the payoff up front.** The laugh that lands late (aged data: retention *rises* near the
    end for those who stay — the ending works, too few reach it) must be foreshadowed in the
    opening beat, so the viewer has a reason to stay for it.

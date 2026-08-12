@@ -17,7 +17,7 @@ import {
   generateAnthropicText,
   AnthropicTextError,
   type AnthropicTextResult,
-} from '../providers/anthropic-text';
+} from '../../providers/anthropic-text';
 import type { Database } from '../../supabase/types.gen';
 import type { AgentInputs } from '../types';
 import {

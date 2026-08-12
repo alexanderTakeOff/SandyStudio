@@ -13,7 +13,7 @@ import {
   uploadBinary,
   listAssetFolder,
   deleteFile,
-} from '../lib/agents/providers/drive';
+} from '../lib/providers/drive';
 
 async function main(): Promise<void> {
   const keep = process.argv.includes('--keep');

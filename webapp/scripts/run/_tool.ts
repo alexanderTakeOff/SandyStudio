@@ -42,6 +42,23 @@ export interface ToolSpec {
   readonly reads?: readonly string[];
   /** DB tables written, plus files when the tool produces them. */
   readonly writes?: readonly string[];
+  /**
+   * Станции конвейера, на которых работает инструмент (`id` из `ROW_DEFINITIONS`,
+   * `lib/api/pipeline-stages.ts`). Из этих объявлений ВЫВОДИТСЯ карта «станция →
+   * чем её проходить» в промпте единого ума.
+   *
+   * Зачем поле, а не таблица где-то рядом (2026-08-09): три прогона записали, каким
+   * инструментом что делается, — но записали в `ss-run`, скилл Тео. В голову ума это
+   * не попало, и каждая станция вскрывала дыру поштучно живьём. Отдельная таблица
+   * «станция → инструменты» была бы ВТОРЫМ списком и разошлась бы с первым ровно так
+   * же. Инструмент уже описывает себя сам (`reads`/`writes`) — пусть называет и место
+   * работы; карта тогда не может устареть, пока инструмент жив.
+   *
+   * Пусто = инструмент не привязан к станции (служебный: деньги, диагностика,
+   * приёмка по требованию). Это законно и проверяется тестом-сторожем отдельно от
+   * случая «станция осталась без инструмента».
+   */
+  readonly stations?: readonly string[];
 }
 
 type ArgValue<A extends ArgSpec> = A extends { readonly values: readonly (infer V extends string)[] }
@@ -51,10 +68,48 @@ type ArgValue<A extends ArgSpec> = A extends { readonly values: readonly (infer 
 export interface ToolContext<S extends ToolSpec> {
   arg<K extends keyof S['args'] & string>(name: K): ArgValue<S['args'][K]>;
   env<K extends keyof NonNullable<S['env']> & string>(name: K): string;
+  /**
+   * Пришёл ли аргумент ЯВНО от вызывающего, или это статический дефолт из спеки.
+   *
+   * D74 (2026-08-08): без этого различения инструмент не может уступить дорогу
+   * настройкам эпизода. `--quality` с `default: 'high'` выглядел одинаково и
+   * когда его назвали, и когда взяли по умолчанию, поэтому
+   * `episodes.metadata.generation_config`, выставленный Директором в UI, не
+   * управлял ничем — держала только устная подсказка уму в чате, ровно то
+   * временное решение, которое Директор велел не принимать за постоянное.
+   *
+   * Приоритет получается честный: явный аргумент → настройка эпизода →
+   * статический дефолт как последний рубеж.
+   */
+  wasGiven<K extends keyof S['args'] & string>(name: K): boolean;
 }
 
-/** True while the registry reads declarations. No `main` runs, no network. */
-export const INTROSPECT = process.env.SS_TOOLS_INTROSPECT === '1';
+/**
+ * True while the registry reads declarations. No `main` runs, no network.
+ *
+ * Read LAZILY on purpose. As a module-level const it froze at the moment this file was first
+ * imported — so the registry, which imports `renderTool` from here before it can set the flag,
+ * got `false` and every tool it introspected tried to parse `--write` as its own argument.
+ * A snapshot of the environment taken at import time is a hidden ordering dependency.
+ */
+export const isIntrospecting = (): boolean => process.env.SS_TOOLS_INTROSPECT === '1';
+
+/**
+ * Третий режим — IN-PROCESS (Ф4.1, мост единого ума). Тот же закон лени, что у
+ * introspect (Ф6: in-process мост умер; режим оставлен — от него зависят тесты).
+ * В этом режиме инструмент не трогает argv и не запускается — он регистрирует
+ * `{spec, main}` в карту, и цикл ума вызывает `main` напрямую, без `npx tsx`
+ * на каждый вызов. CLI-поведение (три строки ниже) не меняется ни на байт.
+ */
+export const isHarnessed = (): boolean => process.env.SS_TOOLS_HARNESS === '1';
+
+export interface HarnessedTool {
+  readonly spec: ToolSpec;
+  readonly main: (ctx: ToolContext<ToolSpec>) => Promise<void>;
+}
+
+/** Карта in-process инструментов. Наполняется импортом модулей под SS_TOOLS_HARNESS=1. */
+export const HARNESS_TOOLS = new Map<string, HarnessedTool>();
 
 /**
  * One renderer serves both surfaces: `--help` of a single tool and its section
@@ -109,33 +164,51 @@ function fail(spec: ToolSpec, message: string): never {
 }
 
 /**
+ * Смысловая валидация — ОДНА на оба входа (CLI и in-process): неизвестный флаг,
+ * пропущенный обязательный, значение вне `values`, подстановка умолчаний.
+ * Кидает, а не завершает процесс — завершение остаётся CLI-обёртке `parseArgv`.
+ */
+export function resolveArgs(spec: ToolSpec, given: Readonly<Record<string, string>>): Record<string, string> {
+  for (const name of Object.keys(given)) {
+    if (!(name in spec.args)) throw new Error(`неизвестный флаг --${name}`);
+  }
+  const out: Record<string, string> = {};
+  for (const [name, a] of Object.entries(spec.args)) {
+    const value = given[name] ?? a.default;
+    if (value === undefined) throw new Error(`не задан обязательный --${name} (${a.about})`);
+    if (a.values && !a.values.includes(value)) {
+      throw new Error(`--${name}=${value} вне допустимого набора: ${a.values.join(' · ')}`);
+    }
+    out[name] = value;
+  }
+  return out;
+}
+
+/**
  * Strict parse. Every token must be a declared `--flag` followed by its value.
  * Today `--qualiti high` silently yields the `high` default and spends $0.25
  * instead of $0.018 — an unrecorded class of defect this closes.
  */
-function parseArgv(spec: ToolSpec, argv: readonly string[]): Record<string, string> {
+function parseArgv(
+  spec: ToolSpec,
+  argv: readonly string[],
+): { values: Record<string, string>; given: Record<string, string> } {
   const given: Record<string, string> = {};
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i];
     if (!token.startsWith('--')) fail(spec, `неожиданный аргумент «${token}» — ожидался --флаг`);
     const name = token.slice(2);
-    if (!(name in spec.args)) fail(spec, `неизвестный флаг --${name}`);
     const value = argv[i + 1];
     if (value === undefined || value.startsWith('--')) fail(spec, `у --${name} нет значения`);
     given[name] = value;
     i++;
   }
 
-  for (const [name, a] of Object.entries(spec.args)) {
-    const value = given[name] ?? a.default;
-    if (value === undefined) fail(spec, `не задан обязательный --${name} (${a.about})`);
-    if (a.values && !a.values.includes(value)) {
-      fail(spec, `--${name}=${value} вне допустимого набора: ${a.values.join(' · ')}`);
-    }
-    given[name] = value;
+  try {
+    return { values: resolveArgs(spec, given), given };
+  } catch (e) {
+    fail(spec, e instanceof Error ? e.message : String(e));
   }
-
-  return given;
 }
 
 /**
@@ -147,7 +220,12 @@ export function defineTool<const S extends ToolSpec>(
   spec: S,
   main: (ctx: ToolContext<S>) => Promise<void>,
 ): S {
-  if (INTROSPECT) return spec;
+  if (isIntrospecting()) return spec;
+
+  if (isHarnessed()) {
+    HARNESS_TOOLS.set(spec.name, { spec, main: main as HarnessedTool['main'] });
+    return spec;
+  }
 
   const argv = process.argv.slice(2);
   if (argv.includes('--help')) {
@@ -155,7 +233,7 @@ export function defineTool<const S extends ToolSpec>(
     process.exit(0);
   }
 
-  const values = parseArgv(spec, argv);
+  const { values, given } = parseArgv(spec, argv);
 
   for (const [name, e] of Object.entries(spec.env ?? {})) {
     if (!process.env[name]) fail(spec, `не задана переменная окружения ${name} — ${e.about}`);
@@ -164,6 +242,7 @@ export function defineTool<const S extends ToolSpec>(
   const ctx = {
     arg: (name: string) => values[name],
     env: (name: string) => process.env[name]!,
+    wasGiven: (name: string) => name in given,
   } as ToolContext<S>;
 
   main(ctx).catch((e: unknown) => {

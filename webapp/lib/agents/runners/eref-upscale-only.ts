@@ -14,8 +14,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/types.gen';
-import { persistBinary } from '../persist-binary';
-import { upscaleToFourK, UpscaleError } from '../providers/upscale-fal';
+import { persistBinary } from '../../persist-binary';
+import { upscaleToFourK, UpscaleError } from '../../providers/upscale-fal';
 import {
   SHOT_REFERENCE_CONTRACT,
   type GenerationAttempt,

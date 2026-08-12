@@ -42,6 +42,15 @@ export interface ConciergeProviderOption extends ConciergeProviderChoice {
 // justified new list, not a duplicate. Keep model ids in sync with what
 // lib/concierge/llm.ts + createConciergeClient support (openai/anthropic/gemini).
 export const CONCIERGE_PROVIDER_CATALOG: ConciergeProviderOption[] = [
+  // ── ХАРНЕС (то, чем Полина работает СЕЙЧАС) ───────────────────────────────
+  // Ходы ведёт мост через `claude -p` по ПОДПИСКЕ: API-ключ в окружение хода не
+  // передаётся вовсе. Модель называется АЛИАСОМ (`opus` / `sonnet`) — его
+  // разворачивает подписка, поэтому смена поколения у провайдера не ломает
+  // настройку. `envKey` тут пустой: ключа этот путь не требует по построению.
+  // Строки API ниже сохранены сознательно (Директор 12.08: «кто знает, когда
+  // Антропик передумает») — но сегодня их не исполняет никто.
+  { id: 'claude-code:opus', provider: 'claude-code', model: 'opus', display_name: 'Подписка · Opus (claude-opus-5, окно 1M)', envKey: '' },
+  { id: 'claude-code:sonnet', provider: 'claude-code', model: 'sonnet', display_name: 'Подписка · Sonnet (claude-sonnet-5, окно 1M)', envKey: '' },
   { id: 'openai:gpt-5.5', provider: 'openai', model: 'gpt-5.5', display_name: 'OpenAI · gpt-5.5', envKey: 'OPENAI_API_KEY' },
   { id: 'openai:gpt-5.4-mini', provider: 'openai', model: 'gpt-5.4-mini', display_name: 'OpenAI · gpt-5.4-mini', envKey: 'OPENAI_API_KEY' },
   // GPT-5.6 frontier tiers (developers.openai.com/api/docs/models): sol =
@@ -53,6 +62,11 @@ export const CONCIERGE_PROVIDER_CATALOG: ConciergeProviderOption[] = [
   { id: 'openai:gpt-5.6-luna', provider: 'openai', model: 'gpt-5.6-luna', display_name: 'OpenAI · gpt-5.6-luna (cost)', envKey: 'OPENAI_API_KEY' },
   { id: 'anthropic:claude-sonnet-5', provider: 'anthropic', model: 'claude-sonnet-5', display_name: 'Anthropic · claude-sonnet-5', envKey: 'ANTHROPIC_API_KEY' },
   { id: 'anthropic:claude-opus-4-8', provider: 'anthropic', model: 'claude-opus-4-8', display_name: 'Anthropic · claude-opus-4-8', envKey: 'ANTHROPIC_API_KEY' },
+  // Окно 1M — ОТДЕЛЬНАЯ строка, не свойство модели (Директор 08.08): суффикс
+  // `-1m` в model триггерит anthropic-beta: context-1m-2025-08-07 в native-пути
+  // (lib/concierge/anthropic-native.ts resolveModel). Компат-поверхность бету не
+  // умеет — на ней суффикс снимается перед отправкой, окно остаётся стандартным.
+  { id: 'anthropic:claude-opus-4-8-1m', provider: 'anthropic', model: 'claude-opus-4-8-1m', display_name: 'Anthropic · claude-opus-4-8 [1m]', envKey: 'ANTHROPIC_API_KEY' },
   { id: 'gemini:gemini-2.5-flash', provider: 'gemini', model: 'gemini-2.5-flash', display_name: 'Gemini · 2.5-flash (free)', envKey: 'GEMINI_API_KEY' },
   { id: 'gemini:gemini-2.5-pro', provider: 'gemini', model: 'gemini-2.5-pro', display_name: 'Gemini · 2.5-pro', envKey: 'GEMINI_API_KEY' },
 ];

@@ -9,7 +9,7 @@ import {
   pastGate,
   DEFAULT_ADVISOR_CONFIG,
   type VideoMetric,
-} from '@/lib/agents/analytics-advisor';
+} from '@/lib/analytics-advisor';
 
 const short = (over: Partial<VideoMetric> = {}): VideoMetric => ({
   videoId: 'v1',

@@ -16,9 +16,9 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseSearchParams } from '@/lib/api/zod-helpers';
 import { ValidationError } from '@/lib/api/errors';
-import { resolveChannelRefreshToken } from '@/lib/agents/providers/google-auth';
-import { assembleChannelAudience, resolveChannelTaxonomy } from '@/lib/agents/audience-metrics';
-import { buildAdvice } from '@/lib/agents/analytics-advisor';
+import { resolveChannelRefreshToken } from '@/lib/providers/google-auth';
+import { assembleChannelAudience, resolveChannelTaxonomy } from '@/lib/audience-metrics';
+import { buildAdvice } from '@/lib/analytics-advisor';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

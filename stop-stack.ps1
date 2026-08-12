@@ -24,8 +24,21 @@
 #
 # This script stops SERVERS only. To also drain the stuck DB job rows, use the
 # existing helpers under webapp\scripts (kill-job.ts / clear-zombie-jobs.ts).
+#
+# 2026-08-08 — scoped to OWN tree only, mirroring start-stack.ps1's fix (2026-08-06).
+# Before this, killing by bare process name (`Get-Process inngest`) and by
+# `*next*start*` alone matched EVERY tree on the machine — running stop-stack from
+# either C:\SandyStudio or C:\SandyStudio-nx killed BOTH stacks' app + Inngest, and
+# the health-check always printed the master's 3000/8288 regardless of which tree
+# actually ran the script. -Wipe's own $MainDb path was already tree-scoped (via
+# $RepoRoot); only the process kill + health-check were not. Director caught this
+# live while starting the nx tree's stack.
 # -----------------------------------------------------------------------------
-param([switch]$Wipe)
+param(
+  [switch]$Wipe,
+  [int]$Port = 3000,
+  [int]$InngestPort = 8288
+)
 
 # Path-agnostic: resolve everything relative to THIS script's folder (repo root),
 # so the same launcher works on any machine / clone path.
@@ -34,15 +47,17 @@ $Web       = Join-Path $RepoRoot 'webapp'
 $SqliteDir = Join-Path $RepoRoot 'FILMS\_inngest'
 $MainDb    = Join-Path $SqliteDir 'main.db'
 
-Write-Host '== EMERGENCY STOP - killing Inngest FIRST (breaks the churn loop) ==' -ForegroundColor Yellow
-$inn = Get-Process inngest -ErrorAction SilentlyContinue
-if ($inn) { $inn | Stop-Process -Force -ErrorAction SilentlyContinue; Write-Host "  killed inngest ($($inn.Count) proc)" -ForegroundColor Green }
-else      { Write-Host '  inngest not running' -ForegroundColor DarkGray }
+Write-Host "== EMERGENCY STOP - killing Inngest FIRST (own tree only, breaks the churn loop) ==" -ForegroundColor Yellow
+$inn = Get-CimInstance Win32_Process -Filter "Name='inngest.exe'" |
+  Where-Object { $_.CommandLine -like "*$SqliteDir*" }
+if ($inn) { $inn | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Write-Host "  killed inngest ($($inn.Count) proc)" -ForegroundColor Green }
+else      { Write-Host '  inngest not running (this tree)' -ForegroundColor DarkGray }
 
-Write-Host '== stopping App (npm run start / next start) ==' -ForegroundColor Yellow
-$app = Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*next*start*' }
+Write-Host '== stopping App (npm run start / next start, own tree only) ==' -ForegroundColor Yellow
+$app = Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+  Where-Object { $_.CommandLine -like '*next*start*' -and $_.CommandLine -like "*$RepoRoot*" }
 if ($app) { $app | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; Write-Host "  killed app ($($app.Count) proc)" -ForegroundColor Green }
-else      { Write-Host '  app not running' -ForegroundColor DarkGray }
+else      { Write-Host '  app not running (this tree)' -ForegroundColor DarkGray }
 
 Start-Sleep -Seconds 2
 
@@ -63,8 +78,8 @@ if ($Wipe) {
   }
 }
 
-Write-Host '== health (expect DOWN) ==' -ForegroundColor Yellow
-foreach ($u in @('http://localhost:3000/api/health','http://localhost:8288/')) {
+Write-Host "== health on :$Port / :$InngestPort (expect DOWN) ==" -ForegroundColor Yellow
+foreach ($u in @("http://localhost:$Port/api/health","http://localhost:$InngestPort/")) {
   try { $c = (Invoke-WebRequest -UseBasicParsing $u -TimeoutSec 4).StatusCode; Write-Host "  $u  ->  STILL UP ($c)" -ForegroundColor Red }
   catch { Write-Host "  $u  ->  down" -ForegroundColor Green }
 }

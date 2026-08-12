@@ -24,6 +24,7 @@
 
 import { inngest } from '@/lib/inngest/client';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import { MANUAL_TERMINAL_STATUSES } from '@/lib/api/status-transitions';
 
 const SCAN_LIMIT = 20; // bound the per-tick read cost (mirrors the watchdog)
 
@@ -43,11 +44,18 @@ export const reconcileCron = inngest.createFunction(
       // string 'true' through the ->> text accessor. This DB filter is an
       // OPTIMIZATION only — reconcileEpisode re-checks isReconcilerArmed
       // internally, so a false positive here is a harmless no-op downstream.
+      // Статус ТОЖЕ фильтр (2026-08-10). Взведённость никто не снимает при завершении
+      // эпизода, поэтому COMPLETE/ARCHIVED оставались в тике навсегда — и однажды
+      // выстрелили: S15-E31, завершённый в июле, получил сегодня полный круг
+      // EREF-DESIGNER → EPREV → CREAD → EREF на $0.71, потому что у кадра SH21 не было
+      // IMG-рефа и матрица увидела дырку. Готовое изделие не добивают. Список
+      // терминальных берём у status-transitions — второго перечня статусов не заводим.
       const { data: eps, error } = await sb
         .from('episodes')
         .select('id')
         .eq('metadata->>reconciler_armed', 'true')
         .in('governance_mode', [2, 3])
+        .not('status', 'in', `(${MANUAL_TERMINAL_STATUSES.join(',')})`)
         .limit(SCAN_LIMIT);
       if (error) {
         // A failed query must NOT be read as "no armed episodes". Skip this tick

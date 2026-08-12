@@ -17,7 +17,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/supabase/types.gen';
-import { computeCostUsd } from '@/lib/agents/providers/anthropic-text';
+import { computeCostUsd } from '@/lib/providers/anthropic-text';
 import { pagedSelect } from '@/lib/api/paged-select';
 import { conciergeProvider } from './llm';
 

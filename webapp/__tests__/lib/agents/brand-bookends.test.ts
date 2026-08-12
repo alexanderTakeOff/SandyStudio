@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { resolveStitchSettings } from '@/lib/api/animatic-shotlist';
-import { buildBrandedInputs } from '@/lib/agents/providers/ffmpeg-stitch';
+import { buildBrandedInputs } from '@/lib/providers/ffmpeg-stitch';
 import { bibleFilename, sectionFromFileType } from '@/lib/api/series-bible';
 
 describe('resolveStitchSettings — vertical delivery has no bookends', () => {

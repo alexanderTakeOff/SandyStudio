@@ -98,8 +98,25 @@ export function bumpPreviewFreshness(
         : 0;
   return {
     ...meta,
-    image_prompt: { ...ip, current_version: curr + 1 },
+    // `history: []` держим явно (10.08): без неё узел `image_prompt` рождался с одним
+    // `current_version`, а шесть читателей в дровере делали `promptDoc.history.find(...)`
+    // — и падали на изделии, которому просто бампнули свежесть.
+    image_prompt: { ...ip, current_version: curr + 1, history: Array.isArray(ip.history) ? ip.history : [] },
   };
+}
+
+/** Одна запись истории промпта — та, что соответствует текущей версии изделия.
+ *
+ *  Форма `image_prompt` встречается НЕПОЛНОЙ: `bumpPreviewFreshness` и ручные
+ *  скрипты создают узел без `history`. Шесть мест в UI читали `doc.history.find(...)`
+ *  напрямую и роняли дровер целиком. Читать историю — только отсюда. */
+export function currentPromptEntry<T extends { version?: number }>(
+  promptDoc: { current_version?: number; history?: T[] } | null | undefined,
+): T | null {
+  const history = Array.isArray(promptDoc?.history) ? promptDoc.history : [];
+  if (history.length === 0) return null;
+  const current = promptDoc?.current_version;
+  return history.find((h) => h?.version === current) ?? history[history.length - 1] ?? null;
 }
 
 /** True when the path is something the browser can load directly (absolute root path or http(s) URL). */

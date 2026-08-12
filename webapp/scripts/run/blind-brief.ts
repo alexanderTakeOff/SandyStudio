@@ -12,7 +12,7 @@
 // about how any of it was made. Contract: `--help`.
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
-import { sb, S15 } from './_env';
+import { sb, seriesId } from './_env';
 import { defineTool } from './_tool';
 
 export default defineTool(
@@ -24,7 +24,13 @@ export default defineTool(
       shots: { about: 'папка с контактными листами приёмки (png/jpg)' },
       out: { about: 'куда положить готовый брифинг приёмщику' },
     },
+    env: {
+      RUN_SERIES_ID: { about: 'сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу' },
+    },
     reads: ['assets'],
+    // Слепая приёмка — инструмент ПО ТРЕБОВАНИЮ, не станция конвейера (решение
+    // Директора 08.08: критиков как отдельных лиц нет, есть перепроверка перед гейтом).
+    stations: [],
   },
   async ({ arg }) => {
     const specPath = resolve(process.cwd(), arg('spec'));
@@ -38,7 +44,7 @@ export default defineTool(
     const { data: plates, error } = await sb
       .from('assets')
       .select('file_type,description,status')
-      .eq('series_id', S15)
+      .eq('series_id', seriesId())
       .or('file_type.like.SBL-character_%,file_type.like.SBL-style_%')
       .order('file_type');
     if (error) throw new Error(`canon read failed: ${error.message}`);

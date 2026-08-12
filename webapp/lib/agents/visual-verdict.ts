@@ -15,7 +15,7 @@ import * as path from 'node:path';
 import OpenAI from 'openai';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
-import { computeCostUsd } from './providers/anthropic-text';
+import { computeCostUsd } from '../providers/anthropic-text';
 
 type Client = SupabaseClient<Database>;
 

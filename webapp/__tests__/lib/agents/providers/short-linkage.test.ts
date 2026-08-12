@@ -7,7 +7,7 @@ import {
   recutWindowMarker,
   persistShortId,
   resolveSeriesPlaylistId,
-} from '@/lib/agents/providers/short-linkage';
+} from '@/lib/providers/short-linkage';
 
 /**
  * Minimal supabase double for persistShortId: one SELECT (returns the current

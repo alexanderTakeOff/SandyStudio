@@ -15,6 +15,36 @@ import Anthropic from '@anthropic-ai/sdk';
 import type OpenAI from 'openai';
 import type { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions';
 import { conciergeAnthropicNativeEnabled } from './llm';
+// Ф6: lib/mind/tool-bridge умер — тип живёт здесь до сноса этого модуля (Ф6.4b).
+interface MultimodalToolResult {
+  __sandystudio_multimodal: true;
+  text: string;
+  images: Array<{ mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'; base64: string }>;
+}
+
+function isMultimodalToolResult(v: unknown): v is MultimodalToolResult {
+  return !!v && typeof v === 'object' && (v as { __sandystudio_multimodal?: unknown }).__sandystudio_multimodal === true;
+}
+
+/**
+ * D70: тул-результат с картинкой (сентинел из `tool-bridge.ts`) разворачивается
+ * в настоящий Anthropic multimodal-блок — текст + `image` с base64. Обычная
+ * строка проходит как раньше; JSON.stringify — последний рубеж для того, что
+ * не строка и не сентинел (не должно случаться, но не должно и падать).
+ */
+function toolResultContent(content: unknown): string | Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> {
+  if (typeof content === 'string') return content;
+  if (isMultimodalToolResult(content)) {
+    return [
+      { type: 'text', text: content.text },
+      ...content.images.map((img): Anthropic.ImageBlockParam => ({
+        type: 'image',
+        source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
+      })),
+    ];
+  }
+  return JSON.stringify(content);
+}
 
 export interface ConciergeSystemSplit {
   stable: string;
@@ -41,6 +71,24 @@ export interface ConciergeCompletion {
     cache_read_input_tokens?: number;
     cache_creation_input_tokens?: number;
   };
+}
+
+// Заголовок беты расширенного окна (Директор 08.08: подтвердить окно ПЕРЕД
+// длинными эпизодами — 60с+ эпизод копит рефы+кадры+стоп-кадры клипов быстрее,
+// чем влезает в стандартные 200К). Без заголовка запрос идёт со стандартным
+// окном МОЛЧА — SDK не откажет, значит несовпадение не будет видно нигде,
+// кроме как в преждевременном обрыве истории треда. Триггерится СУФФИКСОМ
+// `-1m` в id модели (см. каталог `concierge-provider-config.ts`), чтобы окно
+// было ЯВНЫМ выбором в дропдауне, а не скрытым свойством модели.
+const CONTEXT_1M_SUFFIX = '-1m';
+const CONTEXT_1M_BETA_HEADER = 'context-1m-2025-08-07';
+
+/** Модель + флаг «эта модель просила окно 1M» — суффикс снят для реального API-имени. */
+export function resolveModel(model: string): { apiModel: string; contextWindow1m: boolean } {
+  if (model.endsWith(CONTEXT_1M_SUFFIX)) {
+    return { apiModel: model.slice(0, -CONTEXT_1M_SUFFIX.length), contextWindow1m: true };
+  }
+  return { apiModel: model, contextWindow1m: false };
 }
 
 let cachedClient: Anthropic | null = null;
@@ -95,7 +143,7 @@ function translateMessages(
       pendingToolResults.push({
         type: 'tool_result',
         tool_use_id: m.tool_call_id,
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        content: toolResultContent(m.content),
       });
       continue;
     }
@@ -169,13 +217,32 @@ function translateTools(
 export async function createConciergeCompletion(
   openaiClient: OpenAI,
   params: ChatCompletionCreateParamsNonStreaming,
-  opts: { systemSplit: ConciergeSystemSplit },
+  opts: {
+    systemSplit: ConciergeSystemSplit;
+    /**
+     * D69 (2026-08-09): отмена Директора должна обрывать и УЖЕ ИДУЩИЙ вызов, а не
+     * только следующий раунд. Необязателен — вызывающие без него ведут себя как
+     * прежде, поэтому старый роут не задет.
+     */
+    signal?: AbortSignal;
+  },
 ): Promise<ConciergeCompletion> {
   if (!conciergeAnthropicNativeEnabled()) {
-    // Byte-for-byte passthrough — identical to pre-migration behavior.
-    return (await openaiClient.chat.completions.create(
-      params,
-    )) as unknown as ConciergeCompletion;
+    // Байт-в-байт passthrough — но суффикс `-1m` не настоящее имя модели API
+    // (см. resolveModel выше), а бета-заголовок здесь недоступен вовсе — на
+    // compat-поверхности он и так молча отбрасывается (см. заметку файла).
+    // Снимаем суффикс, иначе неизвестное имя модели уходит на 400.
+    // D70: мультимодальный сентинел (см. toolResultContent) рассчитан на native
+    // Anthropic-путь; compat-поверхность его не поймёт — разворачиваем в текст,
+    // деградация, а не поломка (глаза остаются только у native-пути, честно).
+    const messages = params.messages.map((m) =>
+      m.role === 'tool' && isMultimodalToolResult(m.content) ? { ...m, content: m.content.text } : m,
+    );
+    return (await openaiClient.chat.completions.create({
+      ...params,
+      messages,
+      model: resolveModel(params.model).apiModel,
+    })) as unknown as ConciergeCompletion;
   }
 
   const { systemSplit } = opts;
@@ -187,9 +254,10 @@ export async function createConciergeCompletion(
   }
 
   const tools = translateTools(params.tools);
+  const { apiModel, contextWindow1m } = resolveModel(params.model);
 
   const request = {
-    model: params.model,
+    model: apiModel,
     max_tokens: params.max_tokens ?? 1024,
     system,
     messages: translateMessages(params.messages),
@@ -202,6 +270,13 @@ export async function createConciergeCompletion(
 
   const resp = await anthropicClient().messages.create(
     request as unknown as Anthropic.MessageCreateParamsNonStreaming,
+    {
+      ...(contextWindow1m ? { headers: { 'anthropic-beta': CONTEXT_1M_BETA_HEADER } } : {}),
+      // D69: сигнал отмены — штатное поле request-options SDK. Без него «стоп»
+      // Директора обрывал только его собственный fetch, а начатый вызов дорабатывал
+      // до конца и списывался.
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    },
   );
 
   const textParts: string[] = [];

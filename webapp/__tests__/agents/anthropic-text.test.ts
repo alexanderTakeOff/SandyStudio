@@ -4,7 +4,7 @@ import {
   anthropicTimeoutMs,
   computeCostUsd,
   extractLastJsonBlock,
-} from '@/lib/agents/providers/anthropic-text';
+} from '@/lib/providers/anthropic-text';
 
 describe('anthropic-text — pure helpers', () => {
   describe('computeCostUsd', () => {
@@ -24,12 +24,52 @@ describe('anthropic-text — pure helpers', () => {
       expect(cost).toBeCloseTo(4.8, 4);
     });
 
-    it('prices Opus at $15/M input + $75/M output', () => {
+    // 2026-08-08: кейс был написан на `claude-opus-4-7` по ставкам $15/$75. Это
+    // цена ПРЕЖНИХ поколений Opus; 4.7 и 4.8 стоят $5/$25 (сверено по документации).
+    // Модель заменена на ту, для которой ставка действительно верна, — иначе тест
+    // консервировал бы завышение втрое, ровно как это уже случилось с cost.test.ts.
+    it('prices legacy Opus at $15/M input + $75/M output', () => {
       const cost = computeCostUsd(
         { inputTokens: 0, outputTokens: 100_000 },
-        'claude-opus-4-7',
+        'claude-opus-4-1',
       );
       expect(cost).toBeCloseTo(7.5, 4);
+    });
+
+    // D81 (2026-08-08): единый ум работает на `claude-opus-4-8-1m` (выставлено
+    // Директором через UI, лежит в app_config). Цена его ходов пишется в
+    // budget_log ЭТОЙ функцией, поэтому промах таблицы по модели ума попадает
+    // прямо в денежный журнал.
+    //
+    // Ловушек тут ДВЕ, и обе проверяются этим кейсом:
+    //  1) незнакомая модель молча уходит в фолбэк на ставки Sonnet ($3/$15);
+    //  2) Opus 4.8 стоит $5/$25 — ВТРОЕ дешевле прежних Opus-4.x ($15/$75),
+    //     поэтому его префикс обязан стоять в таблице ПЕРЕД общим `claude-opus-4`,
+    //     иначе счёт завышается втрое. Ровно это и было до 2026-08-08.
+    it('prices the mind model claude-opus-4-8-1m at Opus-4.8 rates, not the old Opus or the Sonnet fallback', () => {
+      const cost = computeCostUsd(
+        { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        'claude-opus-4-8-1m',
+      );
+      expect(cost).toBeCloseTo(30.0, 4); // 5 + 25; не 90 (старый Opus), не 18 (Sonnet)
+    });
+
+    // Opus 4.7 тарифицируется ТАК ЖЕ, как 4.8 ($5/$25) — различие только в
+    // fast-режиме, которым мы не пользуемся. Сверено по документации 2026-08-08.
+    it('prices Opus 4.7 identically to 4.8 ($5/$25), not by the legacy Opus-4.x row', () => {
+      const cost = computeCostUsd(
+        { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        'claude-opus-4-7',
+      );
+      expect(cost).toBeCloseTo(30.0, 4);
+    });
+
+    it('keeps the legacy $15/$75 row for older Opus-4.x (prefix order must not swallow it)', () => {
+      const cost = computeCostUsd(
+        { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        'claude-opus-4-1',
+      );
+      expect(cost).toBeCloseTo(90.0, 4);
     });
 
     it('prices gpt-5.5 at $5/M input + $30/M output (not Sonnet-default)', () => {

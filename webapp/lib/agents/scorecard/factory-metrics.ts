@@ -186,24 +186,7 @@ export function productionEndFromJobs(
   return jobBoundary(jobs, anchors, 'earliest');
 }
 
-export interface CostFold {
-  key: string;
-  costUsd: number;
-  calls: number;
-}
-
-/** Fold budget_log rows by a chosen key (agent_id or operation), sorted desc. */
-export function foldCost(
-  rows: Array<{ cost_usd: number | null }>,
-  keyOf: (r: never) => string,
-): CostFold[] {
-  const agg = new Map<string, CostFold>();
-  for (const r of rows) {
-    const key = keyOf(r as never) || 'unknown';
-    const cur = agg.get(key) ?? { key, costUsd: 0, calls: 0 };
-    cur.costUsd += Number(r.cost_usd ?? 0);
-    cur.calls += 1;
-    agg.set(key, cur);
-  }
-  return [...agg.values()].sort((a, b) => b.costUsd - a.costUsd);
-}
+// `foldCost` / `CostFold` переехали в `lib/budget-summary.ts` (Ф1 новой парадигмы,
+// 2026-08-07): считалка денег принадлежит деньгам, а не скоркарте конвейера, которая
+// уходит вместе с ролями. Здесь остаётся ре-экспорт, пока скоркарта жива.
+export { foldCost, type CostFold } from '../../budget-summary';

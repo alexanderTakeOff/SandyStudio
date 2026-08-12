@@ -153,7 +153,7 @@ async function main(): Promise<void> {
 
   // 4. Reuse the production adapter via dynamic import so this script
   //    matches the runtime pipeline exactly.
-  const { generateVideoFalSeedance } = await import('@/lib/agents/providers/fal-seedance');
+  const { generateVideoFalSeedance } = await import('@/lib/providers/fal-seedance');
 
   console.log('\nSubmitting to fal.ai Seedance 2.0 (standard, 5s, 16:9, 720p, start+end)…');
   console.log('  (Polling every 4s; standard tier typically completes in 90–180s.)');

@@ -31,7 +31,12 @@ const GEMINI_OPENAI_BASE = 'https://generativelanguage.googleapis.com/v1beta/ope
 // reasoning_effort (exactly what Claude wants).
 const ANTHROPIC_OPENAI_BASE = 'https://api.anthropic.com/v1/';
 
-export type ConciergeProvider = 'openai' | 'gemini' | 'anthropic';
+// `claude-code` — ум в ХАРНЕСЕ: ходы ведёт мост (scripts/mind-bridge.ts) через
+// `claude -p` по ПОДПИСКЕ, без API-ключа. HTTP-клиента у этого провайдера нет и
+// быть не может; он живёт в этом union потому, что выбор модели Полины — ОДНА
+// настройка студии (Директор: «провайдеры меняются через Studio Settings»), и
+// разводить вторую ради моста значило бы завести вторую правду.
+export type ConciergeProvider = 'openai' | 'gemini' | 'anthropic' | 'claude-code';
 
 // ── Live provider override (Director 2026-07-05) ─────────────────────────────
 // The studio Settings → Providers "Полина" dropdown persists a { provider, model }
@@ -49,6 +54,7 @@ export function conciergeProvider(): ConciergeProvider {
   if (_override) return _override.provider;
   const p = (process.env.CONCIERGE_PROVIDER ?? '').toLowerCase();
   if (p === 'gemini') return 'gemini';
+  if (p === 'claude-code' || p === 'harness') return 'claude-code';
   if (p === 'anthropic' || p === 'opus' || p === 'claude') return 'anthropic';
   return 'openai';
 }
@@ -56,6 +62,12 @@ export function conciergeProvider(): ConciergeProvider {
 export function conciergeModel(): string {
   const provider = conciergeProvider();
   if (_override?.model && _override.provider === provider) return _override.model;
+  // Ум в харнесе: модель — АЛИАС CLI (`opus`, `sonnet`), который разворачивает
+  // подписка. Полное имя (claude-opus-5) знать не надо и вредно: оно меняется на
+  // стороне провайдера, а алиас переживает смену поколения.
+  if (provider === 'claude-code') {
+    return process.env.MIND_BRIDGE_MODEL?.trim() || 'opus';
+  }
   if (provider === 'gemini') {
     return process.env.CONCIERGE_GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
   }
@@ -69,6 +81,7 @@ const PROVIDER_DISPLAY: Record<ConciergeProvider, string> = {
   openai: 'OpenAI',
   gemini: 'Gemini',
   anthropic: 'Anthropic',
+  'claude-code': 'Подписка',
 };
 
 /**
@@ -83,6 +96,15 @@ export function conciergeModelLabel(): string {
 
 export function createConciergeClient(): OpenAI {
   const provider = conciergeProvider();
+  // У харнеса HTTP-клиента НЕТ по построению: ходы ведёт мост через `claude -p`
+  // по подписке. Молчаливое падение в ветку OpenAI было бы худшим исходом —
+  // Полина ответила бы чужой моделью за деньги, и никто бы не заметил.
+  if (provider === 'claude-code') {
+    throw new Error(
+      'Полина работает в харнесе (claude-code): её ходы ведёт мост по подписке, HTTP-клиента у этого провайдера нет. ' +
+        'Если нужен API-путь — выберите модель OpenAI/Anthropic/Gemini в Studio Settings → Providers.',
+    );
+  }
   if (provider === 'gemini') {
     const apiKey = process.env.GEMINI_API_KEY?.trim();
     if (!apiKey) {

@@ -37,7 +37,7 @@ import { resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { createClient } from '@supabase/supabase-js';
-import { getGoogleAccessToken } from '../lib/agents/providers/google-auth';
+import { getGoogleAccessToken } from '../lib/providers/google-auth';
 
 // Force-load .env.local with override (Windows gotcha — see memory file
 // node_env_file_does_not_override.md).

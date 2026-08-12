@@ -31,7 +31,7 @@ import {
   generateAnthropicText,
   AnthropicTextError,
   type AnthropicTextResult,
-} from '../providers/anthropic-text';
+} from '../../providers/anthropic-text';
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import {
   getStoryboardShotById,
@@ -40,7 +40,7 @@ import {
 import type { AgentInputs } from '../types';
 import { loadAnchorChainContext, readEpisodeVideoConfig, type AnchorChainContext } from '../runner';
 import { findApprovedAsset } from '../upstream';
-import { resolveDeliveryTargets } from '../delivery-targets';
+import { resolveDeliveryTargets } from '../../delivery-targets';
 import {
   VIDEO_PROVIDER_CAPS,
   ASPECT_BY_DELIVERY_TARGET,

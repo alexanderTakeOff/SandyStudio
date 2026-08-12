@@ -294,15 +294,70 @@ export async function resolveOpenThreadId(
   // Episode known but its series unresolvable (row gone) — never leak globally.
   if (episodeId) return null;
 
-  // Studio-global lookup: no episode, no series — any open thread is a valid home.
+  // СТУДИЙНЫЙ разговор — это тред БЕЗ сущности, а не «любой открытый» (12.08).
+  // Прежний вариант отдавал первый попавшийся открытый тред, то есть студийный
+  // вопрос мог попасть в переписку конкретного эпизода — та же болезнь «где я»,
+  // что и рассинхрон дропдауна, только в канале ума.
   const { data: anyOpen } = await client
     .from(THREADS_TABLE)
     .select('id')
     .is('ended_at', null)
+    .is('episode_id', null)
+    .is('series_id', null)
     .order('started_at', { ascending: false })
     .limit(1)
     .maybeSingle();
   return (anyOpen as { id: string } | null)?.id ?? null;
+}
+
+/**
+ * Карта headless-сессии Полины ЖИВЁТ НА ТРЕДЕ (миграция 0057).
+ *
+ * Раньше она лежала в `episodes.metadata.mind_session`, и это привязывало ум к
+ * одной сущности: студийных и сериальных разговоров вести было негде. Тред уже
+ * знает свою сущность (`episode_id` / `series_id` / оба null = студия), поэтому
+ * сессия следует за сущностью по построению.
+ */
+export interface MindSessionMap {
+  session_id?: string | null;
+  previous_session_id?: string | null;
+  busy?: { pid: number; turn_ids: string[]; started_at: string } | null;
+  context_tokens?: number | null;
+  context_limit?: number | null;
+  /**
+   * Модель, которой ФАКТИЧЕСКИ шёл последний ход (алиас подписки). Пишет мост.
+   * Шапка чата обязана показывать исполненное, а не выбранное: расхождение
+   * между настройкой и реальностью уже стоило ложной тревоги 08.08.
+   */
+  model?: string | null;
+  updated_at?: string;
+}
+
+export async function readThreadMindSession(
+  client: Client,
+  threadId: string,
+): Promise<MindSessionMap> {
+  const { data, error } = await client
+    .from(THREADS_TABLE)
+    .select('mind_session')
+    .eq('id', threadId)
+    .maybeSingle();
+  if (error) throw new Error(`[concierge.threads] readThreadMindSession: ${error.message}`);
+  return ((data as { mind_session?: MindSessionMap } | null)?.mind_session ?? {}) as MindSessionMap;
+}
+
+export async function writeThreadMindSession(
+  client: Client,
+  threadId: string,
+  patch: Partial<MindSessionMap>,
+): Promise<void> {
+  const current = await readThreadMindSession(client, threadId);
+  const next = { ...current, ...patch, updated_at: new Date().toISOString() };
+  const { error } = await client
+    .from(THREADS_TABLE)
+    .update({ mind_session: next as never })
+    .eq('id', threadId);
+  if (error) throw new Error(`[concierge.threads] writeThreadMindSession: ${error.message}`);
 }
 
 /**

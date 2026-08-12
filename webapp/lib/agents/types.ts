@@ -170,22 +170,7 @@ export interface AgentResult {
   }>;
 }
 
-/**
- * Action codes that governance enforces. Each maps to a Category (A/B/C):
- *  A — hard limit, always Director (PUBLISH, LOCK, BUDGET_OVERRIDE, MODE_CHANGE)
- *  B — creative gate, Mode-dependent (REGENERATE_IMAGE, ENRICH_ASSET, AGENT_RUN, ...)
- *  C — autonomous / direct Director (UPLOAD_ASSET, EDIT_DESCRIPTION)
- */
-export type GovernanceAction =
-  | 'PUBLISH'
-  | 'LOCK'
-  | 'BUDGET_OVERRIDE'
-  | 'MODE_CHANGE'
-  | 'AGENT_RUN'
-  | 'REGENERATE_IMAGE'
-  | 'ENRICH_ASSET'
-  | 'UPLOAD_ASSET'
-  | 'EDIT_DESCRIPTION';
-
-/** Single source of truth for category mapping. Read by `enforceMode`. */
-export type ActionCategory = 'A' | 'B' | 'C';
+// `GovernanceAction` / `ActionCategory` переехали в `lib/governance.ts` (Ф1 новой парадигмы,
+// 2026-08-07). Хард-лимиты — публикация · LOCK · бюджет · режим — переживают слой агентов:
+// это закон фабрики, а не свойство ролей конвейера. Ре-экспорт держится, пока роли живы.
+export type { GovernanceAction, ActionCategory } from '../governance';

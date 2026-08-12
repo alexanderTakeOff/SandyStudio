@@ -86,22 +86,33 @@ export const POST = withApiHandler(async (req) => {
   // 1. Resolve target thread.
   let threadId = body.thread_id;
   if (!threadId) {
-    const { data: latest, error: latestErr } = await sb
+    // Ф4.4 (тред = эпизод): при НЕСКОЛЬКИХ открытых тредах пост без thread_id —
+    // ОТКАЗ с перечнем, а не угадывание. «Последний открытый глобально» молча
+    // ронял сообщение в чужой сериал, стоило двум тредам жить параллельно.
+    const { data: openThreads, error: latestErr } = await sb
       .from('concierge_threads')
-      .select('id')
+      .select('id,episode_id,series_id,started_at')
       .is('ended_at', null)
       .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(10);
     if (latestErr) {
       throw new Error(`thread lookup failed: ${latestErr.message}`);
     }
-    if (!latest) {
+    const open = openThreads ?? [];
+    if (open.length === 0) {
       throw new ValidationError(
         'No open concierge thread to post into. Open the Prod Assistant panel in the webapp to start one, then retry.',
       );
     }
-    threadId = latest.id;
+    if (open.length > 1) {
+      const list = open
+        .map((t) => `${t.id} (episode=${t.episode_id ?? '—'}, series=${t.series_id ?? '—'})`)
+        .join('; ');
+      throw new ValidationError(
+        `Открыто ${open.length} тредов — пост без thread_id неоднозначен. Укажи thread_id явно. Открытые: ${list}`,
+      );
+    }
+    threadId = open[0].id;
   } else {
     const { data: t, error: tErr } = await sb
       .from('concierge_threads')

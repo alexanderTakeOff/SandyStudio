@@ -22,11 +22,11 @@ import {
   ensureReportingJobs,
   listNewReports,
   downloadReport,
-} from '@/lib/agents/providers/youtube-reporting';
-import { resolveChannelRefreshToken } from '@/lib/agents/providers/google-auth';
-import { assertChannelIdentity, type ChannelPassport } from '@/lib/agents/providers/channel-resolver';
-import { assembleChannelAudience, resolveChannelTaxonomy } from '@/lib/agents/audience-metrics';
-import { buildAdvice } from '@/lib/agents/analytics-advisor';
+} from '@/lib/providers/youtube-reporting';
+import { resolveChannelRefreshToken } from '@/lib/providers/google-auth';
+import { assertChannelIdentity, type ChannelPassport } from '@/lib/providers/channel-resolver';
+import { assembleChannelAudience, resolveChannelTaxonomy } from '@/lib/audience-metrics';
+import { buildAdvice } from '@/lib/analytics-advisor';
 
 /** Median of a non-empty slice; null when nothing is readable. */
 function median(xs: number[]): number | null {

@@ -8,7 +8,7 @@ import {
   aggregateWeekly,
   aggregateMonthly,
   type MemoryRow,
-} from '@/lib/agents/hog-memory-rollup';
+} from '@/lib/hog-memory-rollup';
 
 const W = { start: '2026-07-20', end: '2026-07-27' };
 

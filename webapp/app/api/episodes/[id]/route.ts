@@ -14,7 +14,7 @@ import {
   assertEpisodeTransition,
   type EpisodeStatus,
 } from '@/lib/api/status-transitions';
-import { deleteFile } from '@/lib/agents/providers/drive';
+import { deleteFile } from '@/lib/providers/drive';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

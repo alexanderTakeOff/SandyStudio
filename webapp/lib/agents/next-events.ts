@@ -36,11 +36,11 @@ import {
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { resolveShotId } from '@/lib/api/shot-identity';
 import { hasVerticalDeliveryTarget } from '@/lib/api/provider-capabilities';
-import { readDeliveryTargetsFromMetadata } from '@/lib/agents/delivery-targets';
+import { readDeliveryTargetsFromMetadata } from '@/lib/delivery-targets';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 import { ensureEpisodeAnimaticEDL } from '@/lib/api/ensure-animatic';
 import { bakeMusicIntoEpisodeAnimatic } from '@/lib/api/ingest-music';
-import { contractHasMusic } from '@/lib/agents/music';
+import { contractHasMusic } from '@/lib/music';
 import {
   designerChainEnabled,
   animatorChainEnabled,
@@ -445,40 +445,18 @@ export async function computeNextEvents(
     });
   }
 
-  // ── Casting APPROVED → EXEC-SW. The gate the Brief no longer skips in
-  //    Director modes. Resolve the approved brief id so the Writer's event
-  //    payload stays honest.
-  if (ft === 'SPC-episode_cast' && !(await hasJob(supabase, ep, 'EXEC-SW', { since }))) {
-    // Guard (2026-06-25, Director): the Writer auto-start fires ONLY for a fresh
-    // episode (no script yet). A cast RE-approval on an episode that already has
-    // a script must NOT re-run the Writer — a new script version risks a
-    // regression cascade (storyboard → refs → video rebuilt), blowing away
-    // near-complete downstream work. Live case: E12 cast v02 re-approve spawned
-    // redundant SCR v05/v06. Signal is the produced ARTIFACT (script exists),
-    // not the job — honest idempotency by output existence.
-    if (await episodeHasAnyAsset(supabase, ep, 'SCR-script')) {
-      // Suppressed — but never silently: surface a warning into the feed so the
-      // Director/Polina see WHY the Writer didn't fire and can re-run manually
-      // if the rewrite is intentional. Passive (non-actionable) by design — a
-      // deliberate no-op must not wake Polina (avoids the notify spiral).
-      await logEvent(supabase, {
-        event_type: 'pipeline/writer-autostart-skipped',
-        severity: 'warning',
-        title: 'Каст переаппрувлен — Writer не перезапущен',
-        description:
-          'У эпизода уже есть скрипт. Авто-запуск Writer пропущен во избежание ' +
-          'регресса downstream. Перезапиши скрипт вручную, если это намеренно.',
-        episode_id: ep,
-        asset_id: asset.id,
-      });
-    } else {
-      const briefId = await findLatestApprovedAssetId(supabase, ep, 'SPC-brief');
-      events.push({
-        name: 'sandystudio/exec-sw/write-script',
-        data: { episodeId: ep, briefAssetId: briefId },
-      });
-    }
-  }
+  // ── Каст APPROVED → БОЛЬШЕ НИЧЕГО НЕ ЗАПУСКАЕТСЯ.
+  //
+  // Директор, 2026-08-10 (E06, ответ 061). Здесь автостартовал EXEC-SW: на
+  // ратификации каста он сам писал сценарий (sonnet-4-6, $0.1185), а за ним по
+  // критик-цепочке — EXEC-SREV. На E06 они отработали ПАРАЛЛЕЛЬНО с умом и
+  // выдали текст, который отправлял художника сверяться с видами BOTTOM/TOP
+  // листа turnaround — то есть прямо в зеркальный дефект, объявленный §5 самой
+  // плиты. Критик засчитал это как соблюдённое требование и поставил PASS.
+  //
+  // Маленькие агенты исключены как класс: они не читают канон целиком и
+  // штампуют брак, за который платится дважды. Сценарий пишет ум.
+  // EXEC-SREV снимать отдельно не нужно — он висит на завершении Writer.
 
   // ── Casting APPROVED → EXEC-SB, when the SCRIPT is ALREADY approved
   //    (writer→cast→storyboard order, Director 2026-07-04). Mirror of the
@@ -511,12 +489,11 @@ export async function computeNextEvents(
   // critics fire from the critic chain; this router advances EXECUTOR
   // milestones only.
   if (ft === 'SCR-script') {
-    if (!(await hasJob(supabase, ep, 'EXEC-COPY', { since }))) {
-      events.push({
-        name: 'sandystudio/exec-copy/write-metadata',
-        data: { episodeId: ep, scriptAssetId: asset.id },
-      });
-    }
+    // Директор, 2026-08-10 (E06, ответ 061): здесь автостартовал EXEC-COPY и
+    // писал SPC-metadata эпизода, до съёмок которого оставалось пять станций
+    // маршрута. Публицист — станция дистрибуции; она идёт после финального
+    // монтажа и только если эпизод вообще публикуется. Убран.
+
     // ── Script APPROVED → EXEC-SB, when the review + cast are ALREADY approved.
     //    Third leg of the storyboard symmetry (mirrors the cast→SB and
     //    review→SB branches): whichever of {script, review, cast} is approved

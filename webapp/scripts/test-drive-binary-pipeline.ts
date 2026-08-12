@@ -11,9 +11,9 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { createClient } from '@supabase/supabase-js';
-import { generateImageOpenAI } from '../lib/agents/providers/openai-image';
-import { persistBinary } from '../lib/agents/persist-binary';
-import { invalidateProviderCache } from '../lib/agents/provider-resolver';
+import { generateImageOpenAI } from '../lib/providers/openai-image';
+import { persistBinary } from '../lib/persist-binary';
+import { invalidateProviderCache } from '../lib/provider-resolver';
 import type { Database } from '../lib/supabase/types.gen';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();

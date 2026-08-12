@@ -1,0 +1,52 @@
+{
+  "date": "2026-08-12",
+  "collectedAt": "2026-08-12T05:13:27.593Z",
+  "channelKey": "PRAGMATIC",
+  "channelId": "37167034-c508-4366-b34c-ba6568b9b087",
+  "channelName": "Pragmatico Manifesto",
+  "youtubeChannelId": "UC7_0FZQ2GJka0f9c0zfgmtQ",
+  "channel": {
+    "viewCount": 0,
+    "subscriberCount": 0,
+    "videoCount": 2
+  },
+  "videoCount": 2,
+  "rows": [
+    {
+      "id": "N2adtMuzEGI",
+      "title": "SCALE MATTERS — a silent essay on how big you think you are",
+      "state": "public",
+      "liveAt": "2026-08-11T16:50:36Z",
+      "durationSeconds": 46,
+      "views": 0,
+      "likes": 0,
+      "comments": 0,
+      "impressions": null,
+      "impressionCtr": null,
+      "subscribersGained": null,
+      "subscribersLost": null,
+      "trafficSources": null,
+      "avgViewPercentage": null,
+      "avgViewPercentageRaw": 0,
+      "avgViewDurationSeconds": 0
+    },
+    {
+      "id": "-j06kLRnWFc",
+      "title": "WE WENT NO DEEPER — a silent essay on how deep we actually go",
+      "state": "public",
+      "liveAt": "2026-08-11T16:50:27Z",
+      "durationSeconds": 37,
+      "views": 0,
+      "likes": 0,
+      "comments": 0,
+      "impressions": null,
+      "impressionCtr": null,
+      "subscribersGained": null,
+      "subscribersLost": null,
+      "trafficSources": null,
+      "avgViewPercentage": null,
+      "avgViewPercentageRaw": 0,
+      "avgViewDurationSeconds": 0
+    }
+  ]
+}

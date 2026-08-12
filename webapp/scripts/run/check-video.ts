@@ -2,9 +2,9 @@
 // «проверить, что залилось»: `publish` prints what it SENT, this prints what
 // YouTube STORED — privacy and upload status straight from the API.
 // Contract: `--help`.
-import { sb, S15 } from './_env';
+import { sb, seriesId } from './_env';
 import { defineTool } from './_tool';
-import { resolveChannelRefreshToken } from '../../lib/agents/providers/google-auth';
+import { resolveChannelRefreshToken } from '../../lib/providers/google-auth';
 
 export default defineTool(
   {
@@ -14,13 +14,15 @@ export default defineTool(
       id: { about: 'id видео на YouTube (`res.id` из `publish`, хвост ссылки)' },
     },
     env: {
+      RUN_SERIES_ID: { about: 'сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу' },
       GOOGLE_CLIENT_ID: { about: 'клиент OAuth для обмена refresh-токена' },
       GOOGLE_CLIENT_SECRET: { about: 'секрет OAuth' },
     },
     reads: ['series', 'channels'],
+    stations: ['publisher', 'analytics_collector'],
   },
   async ({ arg, env }) => {
-    const { data: s } = await sb.from('series').select('channel_id').eq('id', S15).single();
+    const { data: s } = await sb.from('series').select('channel_id').eq('id', seriesId()).single();
     if (!s?.channel_id) throw new Error('series has no channel — HALT (multi-channel §3)');
     const { data: ch } = await sb.from('channels').select('credential_key').eq('id', s.channel_id).single();
     if (!ch) throw new Error('channel row not found');

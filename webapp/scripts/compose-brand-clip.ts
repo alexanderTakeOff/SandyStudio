@@ -31,7 +31,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { ffmpegStitchEpisode } from '../lib/agents/providers/ffmpeg-stitch';
+import { ffmpegStitchEpisode } from '../lib/providers/ffmpeg-stitch';
 
 type MusicExt = 'mp3' | 'wav' | 'm4a' | 'aac';
 

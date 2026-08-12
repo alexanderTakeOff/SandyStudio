@@ -21,8 +21,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/types.gen';
-import { AnthropicTextError } from '../providers/anthropic-text';
-import { generateAnthropicVision, type VisionImage } from '../providers/anthropic-vision';
+import { AnthropicTextError } from '../../providers/anthropic-text';
+import { generateAnthropicVision, type VisionImage } from '../../providers/anthropic-vision';
 
 export const ON_MODEL_DETECTOR_CONTRACT = 'on_model_detector@v1';
 export const ON_MODEL_DETECTOR_DEFAULT_MODEL = 'claude-opus-4-8';

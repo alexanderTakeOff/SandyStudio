@@ -5,10 +5,24 @@ status: ACTIVE
 owner: EXEC-HW (Head Writer) · EXEC-SW (Writer) · EXEC-GAGAD (planned, Day 11+ sprint)
 applies_when:
   agent: [EXEC-HW, EXEC-SW, EXEC-SREV, EXEC-SB, EXEC-GAGAD]
-  series_id: [SS-S14, SS-S15]
+  genre: [comedy]
 hard: false
 created: 2026-05-19
 ---
+
+<!--
+2026-08-06 — ВОСКРЕШЕНИЕ. Скилл был МЁРТВ с 14 июня: во фронтматтере стоял скоуп
+`series_id: [SS-S14, SS-S15]`, а миграция 0038 перевела `episodes.series_id` из
+кода серии в UUID. Селектор сверяет значения точным вхождением — совпадения не
+было НИКОГДА, скилл выпадал из манифеста целиком и молча. Два с половиной месяца
+таксономия гэгов, атомы, плотность по актам, запрещённые гэги и правило
+обязательного антагониста не доезжали ни до сценариста, ни до раскадровщика.
+
+Скоуп заменён на `genre: [comedy]` — то, чем скилл на самом деле является.
+Правило на будущее: НЕ скоупить скилл по идентификатору, который может сменить
+форму. Жанр — свойство работы; `series_id` — ключ базы, и он мигрирует.
+-->
+
 
 # Sandy Gag Library — Grammar of the Universe
 
@@ -386,16 +400,38 @@ Combo = **6 категорий, 1 гэг**. Это уровень Pixar.
 
 Density должна **варьироваться** по структуре эпизода, не быть универсальной.
 
-### 55-second episode structure
+### Единица измерения — КАДР, а не минута (Директор, 2026-08-06)
 
-| Act | Time | Gag Density | Purpose |
+**«Гэгов в минуту» на ролике в 30–45 секунд разрешает ОДИН гэг на весь ролик.**
+Считать надо кадрами:
+
+- **каждый кадр несёт свой гэг** — это пол, а не потолок;
+- ролик **30 с → ~10 кадров по 3 с → не меньше 10–12 различных гэгов**;
+- ролик **45 с → 10–20 кадров**;
+- **яркий гэг не реже раза в 10 секунд** — за этим зазором внимание уходит;
+- **интенсивность НАРАСТАЕТ к 10–15-й секунде** — это окно решает удержание.
+
+«Различных» — ключевое слово: тот же гэг в новом костюме не считается. Не хватает
+битов под число кадров — **добавляй кадры**, а не сливай стадии формулы в один кадр
+(сливание ложного успеха с отдачей — самый частый отказ читаемости за всю историю).
+
+Числа живут не только здесь: они выводятся из хронометража эпизода функцией
+`resolveGagPlan` и приезжают ОДНОЙ И ТОЙ ЖЕ строкой и Сценаристу, и Раскадровщику,
+поэтому число кадров у них совпадает по построению. Директор может переопределить
+через `episode.metadata.gag_plan`.
+
+### Распределение по актам
+
+| Act | Доля хронометража | Gag Density | Purpose |
 |---|---|---|---|
-| **Setup** | 0:00-0:10 | low (1 micro-gag) | Establish theme + Sandy's want + first hint of antagonism |
-| **Build** | 0:10-0:30 | medium (3-4 gags) | Escalation, introduction of antagonist, first failure |
-| **Climax** | 0:30-0:50 | high (5-7 gags chained) | Catastrophic chain, fullest physical destruction |
-| **Resolution** | 0:50-0:55 | one final beat | Ironic stillness — Sandy frozen in pose with new state |
+| **Setup** | первые ~20% | low (1 micro-gag) | Establish theme + Sandy's want + first hint of antagonism |
+| **Build** | ~20–55% | medium (3–4 gags) | Escalation, introduction of antagonist, first failure |
+| **Climax** | ~55–90% | high (5–7 gags chained) | Catastrophic chain, fullest physical destruction |
+| **Resolution** | последние ~10% | one final beat | Ironic stillness — Sandy frozen in pose with new state |
 
-**Никогда** не делай equal density по эпизоду — это **усыпляет внимание**.
+**Никогда** не делай equal density по эпизоду — это **усыпляет внимание**. Но
+неравномерность не значит дыр: **зазор без яркого гэга не длиннее 10 секунд** на
+любом участке кривой (решение Директора 23 — оба правила совместимы и оба живут).
 
 ## 11. Theme Anchoring (Director's rule, 2026-05-19)
 

@@ -2,7 +2,7 @@
 // series.metadata.branding → channels.metadata.branding → neutral fallbacks.
 
 import { describe, it, expect } from 'vitest';
-import { resolveCopyBranding, resolveShortBranding } from '@/lib/agents/branding';
+import { resolveCopyBranding, resolveShortBranding } from '@/lib/branding';
 
 const SANDY_CHANNEL_BRANDING = {
   branding: {

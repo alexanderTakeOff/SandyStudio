@@ -89,12 +89,12 @@ async function main() {
     return;
   }
   const { createClient } = await import('@supabase/supabase-js');
-  const { readReachMetricsFromArchive } = await import('../lib/agents/providers/youtube-reporting.ts');
+  const { readReachMetricsFromArchive } = await import('../lib/providers/youtube-reporting.ts');
   const { getChannelStatistics, getVideoStatistics, getVideoAnalytics, isCompletionReadable } =
-    await import('../lib/agents/providers/youtube-stats.ts');
-  const { listAllUploads } = await import('../lib/agents/providers/youtube.ts');
-  const { resolveChannelRefreshToken } = await import('../lib/agents/providers/google-auth.ts');
-  const { assertChannelIdentity } = await import('../lib/agents/providers/channel-resolver.ts');
+    await import('../lib/providers/youtube-stats.ts');
+  const { listAllUploads } = await import('../lib/providers/youtube.ts');
+  const { resolveChannelRefreshToken } = await import('../lib/providers/google-auth.ts');
+  const { assertChannelIdentity } = await import('../lib/providers/channel-resolver.ts');
 
   const sb = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

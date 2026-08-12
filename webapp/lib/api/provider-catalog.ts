@@ -21,7 +21,7 @@ export interface ProviderCandidate {
   display_name: string;
   vendor: string;
   envKey: string | null;
-  /** True iff a real adapter is wired in `lib/agents/providers/`. */
+  /** True iff a real adapter is wired in `lib/providers/`. */
   adapter_ready: boolean;
   /** Hint for cost; informational only. */
   cost_hint?: string;

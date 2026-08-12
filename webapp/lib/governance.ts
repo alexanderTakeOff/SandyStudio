@@ -21,7 +21,28 @@
 // will plug into to drive auto-actions.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import type { ActionCategory, GovernanceAction } from './agents/types';
+/**
+ * Action codes that governance enforces. Each maps to a Category (A/B/C):
+ *  A — hard limit, always Director (PUBLISH, LOCK, BUDGET_OVERRIDE, MODE_CHANGE)
+ *  B — creative gate, Mode-dependent (REGENERATE_IMAGE, ENRICH_ASSET, AGENT_RUN, ...)
+ *  C — autonomous / direct Director (UPLOAD_ASSET, EDIT_DESCRIPTION)
+ *
+ * Жило в `agents/types` — то есть закон фабрики хранился внутри слоя, подлежащего сносу.
+ * Ф1 новой парадигмы (2026-08-07): хард-лимиты переживают роли, поэтому живут здесь.
+ */
+export type GovernanceAction =
+  | 'PUBLISH'
+  | 'LOCK'
+  | 'BUDGET_OVERRIDE'
+  | 'MODE_CHANGE'
+  | 'AGENT_RUN'
+  | 'REGENERATE_IMAGE'
+  | 'ENRICH_ASSET'
+  | 'UPLOAD_ASSET'
+  | 'EDIT_DESCRIPTION';
+
+/** Single source of truth for category mapping. Read by `enforceMode`. */
+export type ActionCategory = 'A' | 'B' | 'C';
 import type { GovernanceModeNum } from './api/series-bible';
 
 /** Episode shape needed by governance — matches Supabase row partial. */

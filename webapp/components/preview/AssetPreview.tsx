@@ -26,6 +26,7 @@ import { agentDisplayName } from '@/lib/api/agent-names';
 import type { CanonExtensionProposal } from '@/lib/api/canon-extensions';
 import { VGENShotSection } from '@/components/vgen/VGENShotSection';
 import { ShotPlanContract } from '@/components/preview/ShotPlanContract';
+import { MusicUploadButton } from '@/components/preview/MusicUploadButton';
 import { CandidatesStrip } from '@/components/assets/EREFv2Sections';
 import { primaryAttemptVersion } from '@/lib/api/shot-reference';
 import { compareAssetVersionsNewestFirst } from '@/lib/api/asset-ordering';
@@ -1064,31 +1065,8 @@ function MGENActionsBlock({
   episodeId: string | null;
   onChanged: () => void;
 }) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [busy, setBusy] = useState<null | 'upload' | 'generate'>(null);
+  const [busy, setBusy] = useState<null | 'generate'>(null);
   const [error, setError] = useState<string | null>(null);
-
-  async function handleUpload(file: File): Promise<void> {
-    setBusy('upload');
-    setError(null);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch(`/api/assets/${assetId}/upload-music-direct`, {
-        method: 'POST',
-        body: fd,
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error((j as { error?: string }).error ?? 'Upload failed');
-      }
-      onChanged();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  }
 
   async function handleGenerate(): Promise<void> {
     if (!episodeId) {
@@ -1121,22 +1099,11 @@ function MGENActionsBlock({
   return (
     <div className="space-y-2 pt-2 border-t border-glass">
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          variant="primary"
-          onClick={() => fileInputRef.current?.click()}
+        <MusicUploadButton
+          url={`/api/assets/${assetId}/upload-music-direct`}
+          onDone={onChanged}
           disabled={busy !== null}
-        >
-          {busy === 'upload' ? (
-            <>
-              <Loader2 size={12} className="animate-spin" /> Uploading…
-            </>
-          ) : (
-            <>
-              <Upload size={12} /> Upload track
-            </>
-          )}
-        </Button>
+        />
         <Button
           size="sm"
           variant="ghost"
@@ -1178,17 +1145,6 @@ function MGENActionsBlock({
           {error}
         </span>
       )}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void handleUpload(f);
-          e.target.value = '';
-        }}
-      />
     </div>
   );
 }

@@ -16,7 +16,7 @@ import {
   invalidateProviderCache,
   providerOverlayKey,
   SERIES_OVERRIDABLE_CONTRACTS,
-} from '@/lib/agents/provider-resolver';
+} from '@/lib/provider-resolver';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';

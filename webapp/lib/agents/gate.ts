@@ -18,7 +18,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { Database } from '../supabase/types.gen';
 import { enforceMode } from '../governance';
-import { assertMediaResolves } from './media-preflight';
+import { assertMediaResolves } from '../media-preflight';
 import type { AgentId, GateResult, GovernanceAction } from './types';
 
 // ── Agent dependency declarations ────────────────────────────────────────────
@@ -80,12 +80,19 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
       minCount: 1,
       label: 'Script (REVIEW or APPROVED)',
       allowedStatuses: ['REVIEW', 'REVISION', 'APPROVED'],
-    }],
+    },
+    // ONE SOURCE (2026-08-06): the runner throws without an APPROVED brief with
+    // content (`runners/script-reviewer.ts`). A gate that checks LESS than its
+    // executor is worse than no gate — it lets the stage burn a start and then
+    // reports the shortage. Sweep found the same shape in five stages.
+    { fileTypePrefix: 'SPC-brief', minCount: 1, label: 'Approved Brief' }],
     governance: 'AGENT_RUN',
   },
   'EXEC-SB': {
     required: [
       { fileTypePrefix: 'SCR', minCount: 1, label: 'Approved Script' },
+      // ONE SOURCE: the storyboarder runner throws without an APPROVED brief.
+      { fileTypePrefix: 'SPC-brief', minCount: 1, label: 'Approved Brief' },
       // FIX 3 (2026-07-01): storyboard must not run without an APPROVED cast —
       // casting grounds character presence, and the E13 cascade proved a
       // brief→writer→storyboard path with no cast is possible.
@@ -177,9 +184,13 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     governance: 'AGENT_RUN',
   },
   'EXEC-EDIT': {
-    // Animatic now consumes APPROVED Episode references (not raw storyboard).
+    // Animatic consumes APPROVED Episode references AND the storyboard: both
+    // branches of the runner (`runners/animatic-slideshow.ts`) throw without an
+    // APPROVED STB carrying content. ONE SOURCE (2026-08-06) — the storyboard
+    // requirement lived only in the runner and was invisible at the gate.
     required: [
       { fileTypePrefix: 'IMG-episode_ref', minCount: 1, label: 'Approved episode references' },
+      { fileTypePrefix: 'STB', minCount: 1, label: 'Approved storyboard' },
     ],
     governance: 'AGENT_RUN',
   },
@@ -226,13 +237,22 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     governance: 'AGENT_RUN',
   },
   'EXEC-COPY': {
-    required: [{ fileTypePrefix: 'SCR', minCount: 1, label: 'Approved Script' }],
+    // ONE SOURCE (2026-08-06): the runner throws without an APPROVED brief with
+    // content (`runners/copywriter.ts`). This is the case that started the sweep —
+    // the Director pressed Publicist, it passed the gate and died a second later.
+    required: [
+      { fileTypePrefix: 'SCR', minCount: 1, label: 'Approved Script' },
+      { fileTypePrefix: 'SPC-brief', minCount: 1, label: 'Approved Brief' },
+    ],
     governance: 'AGENT_RUN',
   },
   'EXEC-THUMB-DESIGNER': {
+    // `SPC-metadata` removed 2026-08-06: the runner never reads it — zero matches
+    // in `runners/thumbnail-designer.ts`. A gate demanding MORE than its executor
+    // blocks a stage that would have worked, which is the same defect mirrored:
+    // one costs a wasted start, the other costs work that never starts at all.
     required: [
       { fileTypePrefix: 'SCR', minCount: 1, label: 'Approved Script' },
-      { fileTypePrefix: 'SPC-metadata', minCount: 1, label: 'Approved Metadata' },
     ],
     governance: 'AGENT_RUN',
   },
@@ -438,6 +458,17 @@ async function preflightReferencedMedia(
 }
 
 // ── Validation entry point ────────────────────────────────────────────────────
+
+/**
+ * The declared entry requirements of one agent.
+ *
+ * Exposed so the one-source-of-truth test can compare this declaration against
+ * what the runner actually demands. Read-only by construction — callers cannot
+ * mutate the map, and the gate stays the single place requirements are edited.
+ */
+export function gateSpecFor(agentId: AgentId): AgentGateSpec {
+  return AGENT_GATES[agentId];
+}
 
 export interface ValidateInputsArgs {
   supabase: SupabaseClient<Database>;

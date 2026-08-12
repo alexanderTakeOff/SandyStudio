@@ -24,7 +24,7 @@ import {
   isAnimaticV1,
   type AnimaticContract,
 } from './animatic-shotlist';
-import { bakeApprovedMusic, contractHasMusic } from '../agents/music';
+import { bakeApprovedMusic, contractHasMusic } from '../music';
 
 /**
  * Ensure a parallel-pipeline episode has a VID-animatic EDL. Idempotent — if any

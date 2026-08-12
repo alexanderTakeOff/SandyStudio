@@ -9,7 +9,9 @@ import { use, useState, useEffect, useRef, type KeyboardEvent, type MouseEvent a
 import { createPortal } from 'react-dom';
 import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
-import { RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Trash2, CheckCircle2, ChevronDown, ChevronRight, Power } from 'lucide-react';
+import { RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Trash2, CheckCircle2, ChevronDown, ChevronRight, Power, BookOpen } from 'lucide-react';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { splitLedger, type LedgerRow } from '@/lib/budget-split';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -25,10 +27,8 @@ import { VGENPilotPillbar } from '@/components/pipeline/VGENPilotPillbar';
 import { VGENBatchPanel } from '@/components/vgen/VGENBatchPanel';
 import { EpisodeTimelineSection } from '@/components/timeline/EpisodeTimelineSection';
 import type { PipelineStageId } from '@/lib/api/pipeline-stages';
-import { stageIdentity, stageRamp } from '@/lib/api/pipeline-stages';
-import { ASSET_TYPE_TAXONOMY } from '@/lib/uiux/taxonomy';
-import type { AssetTypeCode } from '@/lib/uiux/types';
 import { agentDisplayName } from '@/lib/api/agent-names';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 import { ActivityEventRow } from '@/components/activity/ActivityEventRow';
 import { fetcher } from '@/lib/swr';
 
@@ -109,45 +109,37 @@ const NODE_GLYPH: Record<Stage['state'], string> = {
   failed: '✗',
 };
 
-// Kebab colour grammar (2026-07-25) on the coarse stage-rail: HUE = stable stage
-// identity (never state), GLOW = activity, WEIGHT = approval — so a node no longer
-// jumps amber→green the moment it's approved. The two per-shot pipelines share the
-// family×role ramp (cold = references, warm = video); every other stage keeps its
-// per-asset-type identity. Grammar helpers are node-safe in pipeline-stages.ts —
-// one source of truth with the animatic kebab.
-const RAIL_RAMP_KEY: Record<string, string> = {
-  reference_designer: 'ref-plan',
-  reference_critic: 'ref-critic',
-  episode_references: 'ref-artist',
-  shot_designer: 'vid-plan',
-  shot_critic: 'vid-critic',
-  visual_generator: 'vid-artist',
-};
-
 const nodeGlow = (c: string) => `0 0 6px color-mix(in oklab, ${c} 55%, transparent)`;
 
-/** STABLE per-stage identity hue — family×role for the two per-shot pipelines,
- *  else the asset-type token, else neutral. NEVER depends on run state. */
-function stageIdentityHue(s: Stage): string {
-  const id = stageIdentity(RAIL_RAMP_KEY[s.id]);
-  if (id) return stageRamp(id.family, id.role);
-  // `latest_asset_type` is the full file_type (e.g. 'IMG-episode_ref', 'AUD-music');
-  // the taxonomy is keyed by the short prefix code (IMG / AUD / SCR / …).
-  const code = s.latest_asset_type?.split('-')[0];
-  const meta = code ? ASSET_TYPE_TAXONOMY[code as AssetTypeCode] : undefined;
-  return meta ? `var(${meta.cssVar})` : 'var(--text-secondary)';
-}
+// ЦВЕТ РЕЛЬСА = СОСТОЯНИЕ (11.08, канон `specs/system/pipeline_view.md` §3.2).
+//
+// До этого цвет держал ИДЕНТИЧНОСТЬ стадии, а состояние выражалось только
+// свечением и жирностью — и утверждённой стадии зелёного не доставалось вовсе.
+// Директор читает колонку по диагонали: ему нужно «где встало» и «что готово»
+// одним взглядом, а не какого рода работа живёт в строке.
+//
+// Кебаб аниматика остаётся на прежней грамматике (`stageIdentity`/`stageRamp` в
+// pipeline-stages.ts) — там цвет как раз обязан говорить о РОДЕ работы. Два
+// разных алфавита на двух разных поверхностях; ни один не отменяет другой.
+const STATE_TOKEN: Record<Stage['state'], string> = {
+  idle: 'var(--text-muted)',
+  running: 'var(--accent-primary)',
+  approved: 'var(--accent-success)',
+  blocked: 'var(--accent-info)',
+  failed: 'var(--accent-danger)',
+};
 
-/** State drives GLOW + WEIGHT + PULSE only (never hue). Idle / unstaffed = grey,
- *  no glow. Error states keep an honest signal hue (a genuine exception, not the
- *  forbidden approve-jump). Running pulses in-identity; approved goes bold. */
 function nodeVisual(s: Stage): { color: string; glow?: string; pulse: boolean; bold: boolean } {
-  if (s.state === 'idle' || s.unstaffed) return { color: 'var(--text-muted)', pulse: false, bold: false };
-  if (s.state === 'blocked') return { color: 'var(--accent-info)', glow: nodeGlow('var(--accent-info)'), pulse: false, bold: false };
-  if (s.state === 'failed') return { color: 'var(--accent-danger)', glow: nodeGlow('var(--accent-danger)'), pulse: false, bold: false };
-  const color = stageIdentityHue(s);
-  if (s.state === 'running') return { color, glow: nodeGlow(color), pulse: true, bold: false };
-  return { color, glow: nodeGlow(color), pulse: false, bold: true }; // approved
+  if (s.state === 'idle' || s.unstaffed) {
+    return { color: STATE_TOKEN.idle, pulse: false, bold: false };
+  }
+  const color = STATE_TOKEN[s.state];
+  return {
+    color,
+    glow: nodeGlow(color),
+    pulse: s.state === 'running',
+    bold: s.state === 'approved',
+  };
 }
 
 // Topic 3 — Critic verdict chip color (semantic tokens only).
@@ -184,9 +176,31 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
   // top bar into this page's contextual header. Grab the slot node after mount;
   // it lives in the shell rendered above this page, so it exists by first effect.
   const [topbarSlot, setTopbarSlot] = useState<HTMLElement | null>(null);
+  // Деньги в шапке (2026-08-10). Показывали `episodes.budget_spent` — поле
+  // РЕЗЕРВАЦИЙ, которое почти никто не обновляет: на E06 оно застряло на $0.24,
+  // когда прямых трат было уже $21. Истина — `budget_log`, и считаем оттуда ровно
+  // так же, как гейт: ПРЯМЫЕ счета провайдеров, без подписочных оценок ходов ума
+  // (их тир помечен `subscription-estimate` и деньгами не является).
+  const [directSpent, setDirectSpent] = useState<number | null>(null);
   useEffect(() => {
     setTopbarSlot(document.getElementById('studio-topbar-slot'));
   }, []);
+
+  // Прямые траты для шапки — из budget_log, тем же правилом, что и гейт Полины.
+  useEffect(() => {
+    let cancelled = false;
+    const read = async () => {
+      try {
+        const sb = createSupabaseBrowserClient();
+        const { data } = await sb.from('budget_log').select('cost_usd,model_or_tier').eq('episode_id', id);
+        if (cancelled) return;
+        setDirectSpent(splitLedger((data ?? []) as LedgerRow[]).direct);
+      } catch { /* best-effort: молча падаем на старое поле budget_spent */ }
+    };
+    void read();
+    const t = setInterval(() => { void read(); }, 15_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [id]);
 
   // Resizable left-rail width (px), persisted. Mirrors ConciergePanel's resize
   // handle (no new dependency). Hydrated from localStorage in an effect so SSR
@@ -231,6 +245,15 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
     // reflecting it — unnerving when Polina reports a trigger and nothing moves.
     { refreshInterval: 8_000 },
   );
+
+  // КОНТЕКСТ ОПЕРАТОРА: страница сообщает провайдеру серию открытого эпизода —
+  // она уже пришла с этим запросом, и провайдеру не нужно грузить её вторично.
+  // Без этого дропдаун и вкладки продолжали показывать прошлый выбор (12.08).
+  const { adoptEntitySeries } = useWorkspaceScope();
+  const loadedSeriesId = data?.data?.episode?.series_id ?? null;
+  useEffect(() => {
+    adoptEntitySeries(loadedSeriesId);
+  }, [loadedSeriesId, adoptEntitySeries]);
 
   // One-time default-expand: once stages load, open EVERY primary that has muted
   // Designer/Critic children so hidden sub-stages are visible immediately (the
@@ -398,21 +421,28 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
         createPortal(
           <>
             <div className="flex items-baseline gap-3 min-w-0 flex-1">
+              {/* Только номер эпизода (Директор, 10.08): префикс SS-S20- дублирует
+                  переключатель сериала слева, а место в шапке дорогое. Кегль поднят —
+                  это заголовок страницы, а не подпись. */}
               <span
-                className="text-sm font-semibold shrink-0"
+                className="text-base font-semibold shrink-0"
                 style={{
                   color:
                     episode.status === 'ARCHIVED'
                       ? 'var(--accent-warning)'
                       : 'var(--text-primary)',
                 }}
-                title={episode.status === 'ARCHIVED' ? 'Archived (in Trash)' : undefined}
+                title={
+                  episode.status === 'ARCHIVED'
+                    ? `Archived (in Trash) · ${episode.episode_code}`
+                    : episode.episode_code
+                }
               >
-                {episode.episode_code}
+                {episode.episode_code.replace(/^SS-S\d+-/, '')}
               </span>
               {episode.title_working && (
                 <span
-                  className="text-sm font-normal truncate"
+                  className="text-base font-normal truncate"
                   style={{
                     color:
                       episode.status === 'ARCHIVED'
@@ -423,9 +453,24 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                   {episode.title_working}
                 </span>
               )}
-              <span className="text-xs text-text-muted whitespace-nowrap shrink-0">
-                ${(episode.budget_spent ?? 0).toFixed(2)} / ${(episode.budget_ceiling ?? 0).toFixed(2)}
+              <span
+                className="text-xs text-text-muted whitespace-nowrap shrink-0"
+                title="Прямые счета провайдеров (fal · openai · anthropic по API). Ходы ума на подписке сюда не входят — они деньгами не являются."
+              >
+                ${(directSpent ?? episode.budget_spent ?? 0).toFixed(2)} / $
+                {(episode.budget_ceiling ?? 0).toFixed(2)}
               </span>
+              {/* Прямая дверь в библиотеку ЭТОГО сериала (Директор, 10.08): раньше
+                  туда шли через список сериалов — длинный обходной путь к тому, что
+                  открывают по десять раз за эпизод. */}
+              <a
+                href={`/series/${episode.series_id}?tab=bible`}
+                className="text-xs whitespace-nowrap shrink-0 inline-flex items-center gap-1 px-2 h-6 rounded-md border border-glass text-text-secondary hover:text-text-primary hover:border-[var(--accent-primary)] transition-colors"
+                title="Библиотека канона этого сериала"
+              >
+                <BookOpen size={12} />
+                Библиотека
+              </a>
             </div>
             <DropdownMenu
               ariaLabel="Episode actions"
@@ -522,7 +567,24 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
               onChanged={() => mutate()}
             />
             <div className="mt-4 pt-3 border-t border-glass space-y-1 text-[10px] text-text-muted">
-              <div>● approved · ◐ running · ◇ blocked · ✗ failed · ○ idle</div>
+              {/* Цвет = состояние (канон pipeline_view.md §3.2) — легенда обязана
+                  говорить тем же алфавитом, что и рельс, иначе она врёт. */}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                {(
+                  [
+                    ['approved', 'готово'],
+                    ['running', 'идёт'],
+                    ['blocked', 'ждёт'],
+                    ['failed', 'сбой'],
+                    ['idle', 'не начато'],
+                  ] as ReadonlyArray<[Stage['state'], string]>
+                ).map(([state, label]) => (
+                  <span key={state} className="inline-flex items-center gap-1">
+                    <span style={{ color: STATE_TOKEN[state] }}>{NODE_GLYPH[state]}</span>
+                    {label}
+                  </span>
+                ))}
+              </div>
               <div>Click a stage → workstation. Designers/Critics tuck under their stage.</div>
               <div>Hover any stage for actions ⋯</div>
             </div>

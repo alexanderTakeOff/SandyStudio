@@ -25,7 +25,7 @@ import {
   isEnvKeySatisfied,
   providerOverlayKey,
   SERIES_OVERRIDABLE_CONTRACTS,
-} from '@/lib/agents/provider-resolver';
+} from '@/lib/provider-resolver';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

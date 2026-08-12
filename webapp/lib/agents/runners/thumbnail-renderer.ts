@@ -28,13 +28,13 @@
 
 import sharp from 'sharp';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { openAIEditsMultiProvider } from '../providers/openai-edits-multi';
-import type { MultiImageRef } from '../providers/image-gen-multi';
-import { MultiImageGenError } from '../providers/image-gen-multi';
-import { readBibleImageAsBase64 } from '../providers/openai-image-edit';
-import { downloadFile } from '../providers/drive';
+import { openAIEditsMultiProvider } from '../../providers/openai-edits-multi';
+import type { MultiImageRef } from '../../providers/image-gen-multi';
+import { MultiImageGenError } from '../../providers/image-gen-multi';
+import { readBibleImageAsBase64 } from '../../providers/openai-image-edit';
+import { downloadFile } from '../../providers/drive';
 import { seriesIdForEpisode } from '../../api/series-bible';
-import { persistBinary } from '../persist-binary';
+import { persistBinary } from '../../persist-binary';
 import type { AgentInputs } from '../types';
 
 // YouTube delivery spec (16:9). Lives here (executor/config layer), not in the

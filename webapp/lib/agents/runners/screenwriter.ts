@@ -22,10 +22,16 @@ import {
   generateAnthropicText,
   AnthropicTextError,
   type AnthropicTextResult,
-} from '../providers/anthropic-text';
+} from '../../providers/anthropic-text';
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import { hasVerticalDeliveryTarget } from '../../api/provider-capabilities';
-import { readEpisodeDeliveryTargets, resolveRuntimeTarget, DEFAULT_RUNTIME_SECONDS } from '../delivery-targets';
+import {
+  readEpisodeDeliveryTargets,
+  resolveRuntimeTarget,
+  resolveGagPlan,
+  gagPlanBriefLine,
+  DEFAULT_RUNTIME_SECONDS,
+} from '../../delivery-targets';
 import type { AgentInputs } from '../types';
 import {
   getAgentSkillManifest,
@@ -137,8 +143,15 @@ export function buildUserMessage(args: {
    * runner always resolves and passes it.
    */
   runtimeTargetSeconds?: number;
+  /**
+   * Gag density for THIS episode, resolved from the passport (2026-08-06).
+   * Optional in the type only for back-compat with older callers/tests; the
+   * runner always resolves and passes it, and it must survive into the
+   * storyboard — that was the Director's explicit requirement.
+   */
+  gagPlanLine?: string;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, bible, revisionNote, activeSkillsBlock, startNoticeContent, shortsIsTarget, runtimeTargetSeconds = DEFAULT_RUNTIME_SECONDS } = args;
+  const { episodeCode, episodeTitle, briefContent, bible, revisionNote, activeSkillsBlock, startNoticeContent, shortsIsTarget, runtimeTargetSeconds = DEFAULT_RUNTIME_SECONDS, gagPlanLine } = args;
   const biblePromptBlock = formatBibleForPrompt(bible);
   const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
   const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
@@ -178,18 +191,26 @@ export function buildUserMessage(args: {
           '',
           'This episode ships as a vertical (9:16) YouTube Short:',
           `- **Target total runtime ~${runtimeTargetSeconds} seconds** — authoritative for THIS episode.`,
-          '- Front-load the hook: the setup must be legible in the first 1–2 seconds so',
-          '  a scroller does not swipe away before the gag lands.',
+          // 2026-08-06 — the hook now carries two numbers, because they measure
+          // different things and the three-way disagreement between files was
+          // costing a real defect class: MOVEMENT must read by second 1, the
+          // SETUP must be understood by second 2.
+          '- Front-load the hook: movement must read by second 1, the setup must be understood by second 2 —',
+          '  a scroller swipes away long before a slow establishing beat pays off.',
           '- Vertical-safe staging: keep the key action on a central vertical axis.',
-          runtimeTargetSeconds <= 40
-            ? '- At this runtime, write ONE self-contained gag arc: one desire, one escalation ramp, one punch. No B-plot, no second independent gag chain.'
-            : '- At this runtime you may chain several escalating gags, but keep a single through-line — no independent second plot.',
+          // Density replaces the old "ONE gag arc" rule for short runtimes. That
+          // rule read as "one gag per episode" and produced sparse 35s clips;
+          // Director 2026-08-06: on shorts EVERY shot carries its own gag.
+          '- ONE through-line — one desire, one escalation ramp, one punch. No B-plot, no second independent',
+          '  plot. But a single through-line is NOT a single gag: it is a chain of distinct gags along one line.',
+          gagPlanLine ? `- ${gagPlanLine}` : '',
           '',
-        ].join('\n')
+        ].filter(Boolean).join('\n')
       : [
           '## Target runtime',
           '',
           `- **Target total runtime ~${runtimeTargetSeconds} seconds** — authoritative for THIS episode. Structure the acts/scenes to sum to it.`,
+          gagPlanLine ? `- ${gagPlanLine}` : '',
           '',
         ].join('\n'),
     hasCanon
@@ -301,6 +322,12 @@ export async function runScreenwriter(
   const shortsIsTarget = hasVerticalDeliveryTarget(readEpisodeDeliveryTargets(inputs.episode));
   // Authoritative episode runtime (Director's setting wins over the shorts default).
   const runtimeTargetSeconds = resolveRuntimeTarget({
+    episodeMetadata: (inputs.episode as { metadata?: unknown } | undefined)?.metadata,
+    shortsIsTarget,
+  });
+  // Плотность гэгов из паспорта эпизода — тот же источник, что у Раскадровщика,
+  // поэтому число кадров у автора и у раскадровки совпадает по построению.
+  const gagPlan = resolveGagPlan({
     episodeMetadata: (inputs.episode as { metadata?: unknown } | undefined)?.metadata,
     shortsIsTarget,
   });
@@ -430,7 +457,12 @@ export async function runScreenwriter(
     startNoticeContent,
     shortsIsTarget,
     runtimeTargetSeconds,
+    gagPlanLine: gagPlanBriefLine(gagPlan),
   });
+  notes.push(
+    `gag plan: ${gagPlan.shotTarget} shots × ~${gagPlan.shotSeconds}s, ≥${gagPlan.minGags} distinct gags` +
+      (gagPlan.explicit ? ' (Director override)' : ' (derived from runtime)'),
+  );
   if (startNoticeContent) {
     notes.push(
       `Episode Start Notice loaded (${startNoticeContent.length} chars) — advisory reservoir injected`,

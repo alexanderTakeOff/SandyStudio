@@ -42,7 +42,7 @@ import {
   createPlaylist,
   isVideoInPlaylist,
   addVideoToPlaylist,
-} from '../lib/agents/providers/youtube';
+} from '../lib/providers/youtube';
 
 const PLAYLIST_TITLE = 'Sandy the Hourglass · Shorts';
 const PLAYLIST_DESC = '⏳ Bite-size Sandy — vertical gags. Each Short links to its full episode.';
