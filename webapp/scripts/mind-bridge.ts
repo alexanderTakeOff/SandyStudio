@@ -7,9 +7,12 @@
 // приходит бесплатно, нового протокола нет.
 //
 // Законы (docs/plans/polina-harness-migration.md Ф2):
-//  · сессия = эпизод: карта в `episodes.metadata.mind_session`;
+//  · СЕССИЯ = ТРЕД, а тред = сущность, которую открыл Директор: эпизод, сериал
+//    или студия (12.08, `concierge_threads.mind_session`, миграция 0057). До
+//    этого сессия жила на ЭПИЗОДЕ, и разговоров уровня сериала/студии не
+//    существовало вовсе — мост их пропускал, а чат вне эпизода печатал 404;
 //    session_id перечитывается из result-события КАЖДЫЙ ход;
-//  · один ход на эпизод: замок busy{pid} в той же карте; сообщения Директора,
+//  · один ход на тред: замок busy{pid} в той же карте; сообщения Директора,
 //    пришедшие во время хода, буферизуются и уходят СЛЕДУЮЩИМ ходом;
 //  · деньги: `result.total_cost_usd` → строка budget_log (оценка движка, не
 //    сочинённая цифра — D95);
@@ -23,7 +26,13 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { sb } from './run/_env';
-import { persistTurn, getThread } from '../lib/concierge/threads';
+import {
+  persistTurn,
+  getThread,
+  readThreadMindSession,
+  writeThreadMindSession,
+  type MindSessionMap,
+} from '../lib/concierge/threads';
 
 const CLONE_DIR = process.env.POLINA_CLONE_DIR ?? 'C:\\SandyStudio-polina';
 const CLONE_WEBAPP = resolve(CLONE_DIR, 'webapp');
@@ -37,23 +46,11 @@ const TURN_TIMEOUT_MS = Number(process.env.MIND_BRIDGE_TURN_TIMEOUT_MS ?? 45 * 6
 // Полный набор рук; границы держат хуки (Ф3) и права клона, не кастрация списка.
 const ALLOWED_TOOLS = 'Bash,Read,Glob,Grep,Write,Edit,Agent,Task,Skill,TodoWrite';
 
-interface MindSession {
-  session_id?: string | null;
-  /** Сессия, закрытая кнопкой «Новая сессия ума» — след для разбора, не для resume. */
-  previous_session_id?: string | null;
-  busy?: { pid: number; turn_ids: string[]; started_at: string } | null;
-  /** Токенов в последнем запросе хода = длина разговора, которую держит модель. */
-  context_tokens?: number;
-  /** Окно модели, которой запущен ход — панель не должна его угадывать. */
-  context_limit?: number;
-  updated_at?: string;
-}
-
-/** Ходы в полёте — по эпизоду. In-memory + зеркало в episodes.metadata. */
+/** Ходы в полёте — ПО ТРЕДУ. In-memory + зеркало в concierge_threads.mind_session. */
 const inFlight = new Map<string, ChildProcessWithoutNullStreams>();
 
 /**
- * Подряд идущие обрывы по эпизоду. Залипший шелл (незакрытая кавычка) валит
+ * Подряд идущие обрывы по треду. Залипший шелл (незакрытая кавычка) валит
  * КАЖДЫЙ следующий ход, и внешне это неотличимо от обычной неудачи — 10.08
  * потратили четыре хода, прежде чем поняли. Считаем и говорим вслух; сбрасывает
  * сессию ДИРЕКТОР кнопкой, а не мост: ход падает и от таймаута, и от сети, а
@@ -94,19 +91,12 @@ function log(msg: string): void {
   console.log(`[bridge ${new Date().toISOString().slice(11, 19)}] ${msg}`);
 }
 
-async function readMindSession(episodeId: string): Promise<{ meta: Record<string, unknown>; mind: MindSession }> {
-  const { data, error } = await sb.from('episodes').select('metadata').eq('id', episodeId).maybeSingle();
-  if (error || !data) throw new Error(`эпизод ${episodeId}: ${error?.message ?? 'не найден'}`);
-  const meta = (data.metadata ?? {}) as Record<string, unknown>;
-  return { meta, mind: (meta.mind_session ?? {}) as MindSession };
-}
-
-async function writeMindSession(episodeId: string, patch: Partial<MindSession>): Promise<void> {
-  const { meta, mind } = await readMindSession(episodeId);
-  const next = { ...meta, mind_session: { ...mind, ...patch, updated_at: new Date().toISOString() } };
-  const { error } = await sb.from('episodes').update({ metadata: next }).eq('id', episodeId);
-  if (error) throw new Error(`mind_session write (${episodeId}): ${error.message}`);
-}
+// СЕССИЯ ЖИВЁТ НА ТРЕДЕ (0057). Раньше карта лежала в `episodes.metadata`, и это
+// привязывало ум к одной сущности: студийные и сериальные разговоры вести было
+// негде. Тред уже знает свою сущность, поэтому сессия следует за ней сама.
+const readMindSession = (threadId: string) => readThreadMindSession(sb as never, threadId);
+const writeMindSession = (threadId: string, patch: Partial<MindSessionMap>) =>
+  writeThreadMindSession(sb as never, threadId, patch);
 
 /** Отметить строки как принятые мостом — иначе следующий опрос заберёт их снова. */
 async function claimTurns(ids: string[], state: string): Promise<void> {
@@ -122,13 +112,16 @@ async function claimTurns(ids: string[], state: string): Promise<void> {
 
 /** Спавн одного хода Полины. Возвращается после завершения процесса. */
 async function runTurn(args: {
-  episodeId: string;
+  /** Сущность треда: эпизод, сериал или ничего (студийный разговор). */
+  episodeId: string | null;
   seriesId: string | null;
   threadId: string;
   text: string;
   turnIds: string[];
+  /** Вкладка сайдбара, на которой Директор говорит. */
+  tab: string | null;
 }): Promise<void> {
-  const { mind } = await readMindSession(args.episodeId);
+  const mind = await readMindSession(args.threadId);
 
   const cli: string[] = [
     '-p',
@@ -143,24 +136,52 @@ async function runTurn(args: {
 
   // Подписка, не API: ключ вычищается из env хода (Ш54). Остальное окружение —
   // как у моста; RUN_* выставляются на ход, инструменты клона читают их из env.
+  //
+  // RUN_* выставляются ТОЛЬКО те, что у треда есть: на студийном разговоре нет
+  // эпизода, и подсунуть ей чужой хуже, чем не дать никакого — инструменты
+  // эпизода отказали бы честно, а с чужим id молча сделали бы не ту работу.
   const env = { ...process.env };
   delete env.ANTHROPIC_API_KEY;
-  env.RUN_EPISODE_ID = args.episodeId;
+  delete env.RUN_EPISODE_ID;
+  delete env.RUN_SERIES_ID;
+  if (args.episodeId) env.RUN_EPISODE_ID = args.episodeId;
   if (args.seriesId) env.RUN_SERIES_ID = args.seriesId;
 
-  log(`ход → эпизод ${args.episodeId.slice(0, 8)} (${mind.session_id ? 'resume ' + mind.session_id.slice(0, 8) : 'новая сессия'})`);
+  const where = args.episodeId
+    ? `эпизод ${args.episodeId.slice(0, 8)}`
+    : args.seriesId
+      ? `сериал ${args.seriesId.slice(0, 8)}`
+      : 'студия';
+  log(`ход → ${where} (${mind.session_id ? 'resume ' + mind.session_id.slice(0, 8) : 'новая сессия'})`);
   const child = spawn('claude', cli, {
     cwd: CLONE_WEBAPP,
     env,
     shell: true, // npm-shim claude.cmd на Windows не спавнится без shell
     stdio: ['pipe', 'pipe', 'pipe'],
   });
-  inFlight.set(args.episodeId, child);
-  await writeMindSession(args.episodeId, {
+  inFlight.set(args.threadId, child);
+  await writeMindSession(args.threadId, {
     busy: { pid: child.pid ?? -1, turn_ids: args.turnIds, started_at: new Date().toISOString() },
   });
 
-  child.stdin.write(args.text, 'utf8');
+  // ОБСТАНОВКА (12.08): вкладка — параметр внутри сессии, а не своя сессия
+  // (решение Директора 21). Полина видит, на что он смотрит, и не тратит ход на
+  // выяснение. Одна строка перед сообщением; коды берём здесь, чтобы в тексте
+  // стояли имена, а не uuid.
+  const scene: string[] = [];
+  if (args.tab) scene.push(`вкладка «${args.tab}»`);
+  if (args.episodeId) {
+    const { data } = await sb.from('episodes').select('episode_code').eq('id', args.episodeId).maybeSingle();
+    scene.push(`эпизод ${(data as { episode_code?: string } | null)?.episode_code ?? args.episodeId.slice(0, 8)}`);
+  } else if (args.seriesId) {
+    const { data } = await sb.from('series').select('code').eq('id', args.seriesId).maybeSingle();
+    scene.push(`сериал ${(data as { code?: string } | null)?.code ?? args.seriesId.slice(0, 8)}`);
+  } else {
+    scene.push('уровень СТУДИИ — открытого эпизода нет');
+  }
+  const payload = `[ОБСТАНОВКА] Директор смотрит: ${scene.join(' · ')}\n\n${args.text}`;
+
+  child.stdin.write(payload, 'utf8');
   child.stdin.end();
 
   let finalText = '';
@@ -246,10 +267,10 @@ async function runTurn(args: {
     child.on('error', () => res(-1));
   });
   clearTimeout(timeout);
-  inFlight.delete(args.episodeId);
+  inFlight.delete(args.threadId);
 
   const sessionId = typeof resultMeta.session_id === 'string' ? resultMeta.session_id : mind.session_id;
-  await writeMindSession(args.episodeId, {
+  await writeMindSession(args.threadId, {
     session_id: sessionId,
     busy: null,
     // Кладём рядом с сессией, чтобы панель показывала заполненность контекста
@@ -271,6 +292,7 @@ async function runTurn(args: {
       await sb.from('budget_log').insert({
         job_id: null,
         episode_id: args.episodeId,
+        series_id: args.seriesId,
         agent_id: 'POLINA-MIND',
         api_provider: 'anthropic',
         model_or_tier: `${MODEL}/subscription-estimate`,
@@ -280,7 +302,7 @@ async function runTurn(args: {
       });
     }
     await claimTurns(args.turnIds, 'answered');
-    failStreak.delete(args.episodeId);
+    failStreak.delete(args.threadId);
     log(`ход ← ok · $${resultMeta.cost_usd ?? '?'} · exit=${code}`);
   } else {
     // Обрыв — честной строкой, а не молчанием (худший класс отказа — тишина).
@@ -291,8 +313,8 @@ async function runTurn(args: {
       metadata: { bridge: true, error: true },
     });
     await claimTurns(args.turnIds, 'failed');
-    const streak = (failStreak.get(args.episodeId) ?? 0) + 1;
-    failStreak.set(args.episodeId, streak);
+    const streak = (failStreak.get(args.threadId) ?? 0) + 1;
+    failStreak.set(args.threadId, streak);
     if (streak >= FAIL_STREAK_HINT_AT) {
       await persistTurn(sb as never, args.threadId, {
         role: 'system',
@@ -333,11 +355,9 @@ async function pollOnce(): Promise<void> {
   for (const c of cancels ?? []) {
     const meta = (c.metadata ?? {}) as Record<string, unknown>;
     if (!meta.cancel || !meta.for_bridge || meta.bridge) continue;
-    const thread = await getThread(sb as never, c.thread_id);
-    const episodeId = thread?.episode_id;
-    if (episodeId && inFlight.has(episodeId)) {
-      log(`ОТМЕНА эпизода ${episodeId.slice(0, 8)} по слову Директора`);
-      killTree(inFlight.get(episodeId)?.pid);
+    if (inFlight.has(c.thread_id)) {
+      log(`ОТМЕНА хода треда ${c.thread_id.slice(0, 8)} по слову Директора`);
+      killTree(inFlight.get(c.thread_id)?.pid);
     }
     await claimTurns([c.id], 'cancel-handled');
   }
@@ -353,6 +373,8 @@ async function pollOnce(): Promise<void> {
     .limit(50);
 
   const byThread = new Map<string, Array<{ id: string; content: string }>>();
+  // Вкладка последней строки треда — обстановка, в которой Директор говорит.
+  const tabByThread = new Map<string, string>();
   for (const t of turns ?? []) {
     const meta = (t.metadata ?? {}) as Record<string, unknown>;
     // СОСУЩЕСТВОВАНИЕ (до Ф5): мост берёт ТОЛЬКО адресованные ему строки
@@ -360,6 +382,7 @@ async function pollOnce(): Promise<void> {
     // отвечал бы дуэтом с живым /api/mind/chat. Панель начнёт ставить маркер
     // на Ф5; до этого канал моста — mind-say.
     if (!meta.for_bridge || meta.bridge || meta.cancel) continue;
+    if (typeof meta.tab === 'string' && meta.tab) tabByThread.set(t.thread_id, meta.tab);
     const list = byThread.get(t.thread_id) ?? [];
     list.push({ id: t.id, content: t.content });
     byThread.set(t.thread_id, list);
@@ -389,28 +412,26 @@ async function pollOnce(): Promise<void> {
   }
 
   for (const [threadId, items] of byThread) {
+    // Тред БЕЗ эпизода теперь законен: это разговор уровня сериала или студии
+    // (12.08). Прежний пропуск 'skipped-no-episode' и был причиной, по которой
+    // ум существовал только внутри эпизода.
     const thread = await getThread(sb as never, threadId);
-    const episodeId = thread?.episode_id;
-    if (!episodeId) {
-      // Студийные треды без эпизода мост не ведёт (сессия = эпизод).
-      await claimTurns(items.map((i) => i.id), 'skipped-no-episode');
-      continue;
-    }
-    if (inFlight.has(episodeId)) continue; // буферизуется до следующего хода
+    if (inFlight.has(threadId)) continue; // буферизуется до следующего хода
 
     const ids = items.map((i) => i.id);
     await claimTurns(ids, 'claimed');
     const text = items.map((i) => i.content).join('\n\n');
     void runTurn({
-      episodeId,
+      episodeId: thread?.episode_id ?? null,
       seriesId: thread?.series_id ?? null,
       threadId,
       text,
       turnIds: ids,
+      tab: tabByThread.get(threadId) ?? null,
     }).catch(async (e) => {
       log(`ход упал: ${e instanceof Error ? e.message : e}`);
-      inFlight.delete(episodeId);
-      await writeMindSession(episodeId, { busy: null }).catch(() => {});
+      inFlight.delete(threadId);
+      await writeMindSession(threadId, { busy: null }).catch(() => {});
     });
   }
 }
@@ -420,12 +441,15 @@ async function main(): Promise<void> {
     throw new Error(`роль не найдена: ${ROLE_FILE} — сгенерируй в клоне (gen-role-polina --write)`);
   }
   // Чистка замков, переживших прошлый мост: их pid мертвы вместе с ним.
-  const { data: lockedEps } = await sb.from('episodes').select('id,metadata').not('metadata->mind_session', 'is', null);
-  for (const ep of lockedEps ?? []) {
-    const mind = ((ep.metadata as Record<string, unknown>)?.mind_session ?? {}) as MindSession;
+  const { data: lockedThreads } = await sb
+    .from('concierge_threads')
+    .select('id,mind_session')
+    .not('mind_session', 'is', null);
+  for (const t of lockedThreads ?? []) {
+    const mind = ((t as { mind_session?: MindSessionMap }).mind_session ?? {}) as MindSessionMap;
     if (mind.busy) {
-      log(`снимаю осиротевший замок эпизода ${ep.id.slice(0, 8)} (pid=${mind.busy.pid})`);
-      await writeMindSession(ep.id, { busy: null });
+      log(`снимаю осиротевший замок треда ${t.id.slice(0, 8)} (pid=${mind.busy.pid})`);
+      await writeMindSession(t.id, { busy: null });
     }
   }
   log(`мост запущен · клон=${CLONE_WEBAPP} · модель=${MODEL} · опрос ${POLL_MS}мс`);

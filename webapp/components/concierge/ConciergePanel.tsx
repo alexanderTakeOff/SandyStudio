@@ -85,8 +85,11 @@ const MIND_CHAT = process.env.NEXT_PUBLIC_MIND_CHAT === '1';
 // отката больше не имеет смысла (откат = git revert).
 const MIND_BRIDGE = MIND_CHAT;
 const CHAT_ENDPOINT = MIND_CHAT ? '/api/mind/chat' : '/api/concierge/chat';
-const threadKeyFor = (episodeId: string | null): string =>
-  MIND_CHAT ? `sandystudio.mind.threadId.${episodeId ?? 'studio'}` : THREAD_KEY;
+// Ключ треда — по СУЩНОСТИ, которую открыл Директор (12.08): эпизод, сериал или
+// студия. Раньше ключ знал только эпизод, поэтому разговор уровня сериала и
+// студии было негде держать, а чат вне эпизода уходил в снесённый роут.
+const threadKeyFor = (entityKey: string): string =>
+  MIND_CHAT ? `sandystudio.mind.threadId.${entityKey}` : THREAD_KEY;
 const TTS_KEY = 'sandystudio.prodassistant.ttsEnabled';
 // 2026-05-26 (TD-54.3) — left/right dock retired. PA now lives in the middle
 // grid column between Sidebar and Content. SIDE_KEY removed; old localStorage
@@ -372,7 +375,15 @@ export function ConciergePanel() {
   // (WorkspaceScopeProvider), а не выводится здесь своим regex'ом по пути.
   // Свой вывод и был частью класса дефектов «где я»: чат знал только эпизод,
   // поэтому вне его страницы уходил в снесённый роут и печатал «HTTP 404».
-  const { episodeId: openEpisodeId } = useWorkspaceScope();
+  const { episodeId: openEpisodeId, seriesId: openSeriesId, kind: contextKind, tab } =
+    useWorkspaceScope();
+  // Сущность разговора одной строкой — ключ треда, зависимость эффектов и то,
+  // что панель показывает Директору в приветствии новой сессии.
+  const entityKey = openEpisodeId
+    ? `episode:${openEpisodeId}`
+    : openSeriesId
+      ? `series:${openSeriesId}`
+      : 'studio';
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
@@ -490,14 +501,15 @@ export function ConciergePanel() {
     } catch { /* ignore */ }
   }, []);
 
-  // Ф4.4 — mind-режим: тред СЛЕДУЕТ за открытым эпизодом через СВОЙ ключ.
-  // Смена эпизода = смена треда = смена ленты; история нового треда дольётся
-  // существующим [threadId] DB-load эффектом. Параллельные сериалы не мешаются.
+  // Ф4.4 — mind-режим: тред СЛЕДУЕТ за открытой СУЩНОСТЬЮ через свой ключ.
+  // Смена сущности = смена треда = смена ленты; история нового треда дольётся
+  // существующим [threadId] DB-load эффектом. Вернувшись на эпизод, Директор
+  // попадает в ТОТ ЖЕ разговор — это его прямое требование (12.08).
   useEffect(() => {
     if (!MIND_CHAT) return;
     let cancelled = false;
     try {
-      const t = localStorage.getItem(threadKeyFor(openEpisodeId));
+      const t = localStorage.getItem(threadKeyFor(entityKey));
       setThreadId(t ?? null);
       setMessages([]);
       try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
@@ -513,30 +525,52 @@ export function ConciergePanel() {
       // этого эпизода. Серийный и глобальный фолбэки не воспроизводим сознательно
       // (роут такой тред всё равно отвергнет, а при параллельных эпизодах он увёл
       // бы в чужой ум).
-      if (!t && openEpisodeId) {
+      if (!t) {
         void (async () => {
           try {
             const sb = createSupabaseBrowserClient();
-            const { data } = await sb
+            let q = sb
               .from('concierge_threads')
               .select('id')
-              .eq('episode_id', openEpisodeId)
-              .is('ended_at', null)
+              .is('ended_at', null);
+            // Строго СВОЯ сущность: серийный и студийный фолбэки не
+            // воспроизводим — они увели бы в чужой ум (та же болезнь «где я»).
+            if (openEpisodeId) q = q.eq('episode_id', openEpisodeId);
+            else if (openSeriesId) q = q.is('episode_id', null).eq('series_id', openSeriesId);
+            else q = q.is('episode_id', null).is('series_id', null);
+            const { data } = await q
               .order('started_at', { ascending: false })
               .limit(1);
             // Тот же каст, что у соседних запросов в этом файле: supabase-js
             // выводит tuple-with-error union и теряет форму строки.
             const rows = (data ?? []) as unknown as Array<{ id: string }>;
             const found = rows[0]?.id;
-            if (cancelled || !found) return;
+            if (cancelled) return;
+            if (!found) {
+              // ПУСТАЯ СУЩНОСТЬ — не пустое окно (требование Директора 12.08):
+              // сказать, что разговора тут ещё не было и с чего он начнётся.
+              setMessages([
+                {
+                  role: 'assistant',
+                  content:
+                    contextKind === 'episode'
+                      ? '🆕 Здесь ещё не было разговора. Новая сессия ума по этому ЭПИЗОДУ начнётся с вашего первого сообщения — Полина увидит эпизод и вкладку, на которой вы стоите.'
+                      : contextKind === 'series'
+                        ? '🆕 Здесь ещё не было разговора. Новая сессия ума по этому СЕРИАЛУ начнётся с вашего первого сообщения.'
+                        : '🆕 Здесь ещё не было разговора. Это сессия ума уровня СТУДИИ — про эпизод она ничего не знает, пока вы его не откроете.',
+                },
+              ]);
+              return;
+            }
             setThreadId(found);
-            try { localStorage.setItem(threadKeyFor(openEpisodeId), found); } catch { /* ignore */ }
+            try { localStorage.setItem(threadKeyFor(entityKey), found); } catch { /* ignore */ }
           } catch { /* сеть/права — панель просто заведёт новый тред, как раньше */ }
         })();
       }
     } catch { /* ignore */ }
     return () => { cancelled = true; };
-  }, [openEpisodeId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityKey]);
 
   // Persist panel width / open / input height.
   useEffect(() => {
@@ -944,15 +978,21 @@ export function ConciergePanel() {
   // D105 — опрос замка хода. Читаем ту же базу тем же браузерным клиентом, что и
   // остальной опрос панели: ни нового роута, ни правки моста — источник уже есть.
   useEffect(() => {
-    if (!MIND_BRIDGE || !openEpisodeId) { setTurnBusySince(null); return; }
+    // Карта сессии живёт на ТРЕДЕ (0057) — читаем её оттуда, а не с эпизода:
+    // разговор может идти по сериалу или по студии, где эпизода нет вовсе.
+    if (!MIND_BRIDGE || !threadId) { setTurnBusySince(null); return; }
     let cancelled = false;
     const read = async () => {
       try {
         const sb = createSupabaseBrowserClient();
-        const { data } = await sb.from('episodes').select('metadata').eq('id', openEpisodeId).maybeSingle();
+        const { data } = await sb
+          .from('concierge_threads')
+          .select('mind_session')
+          .eq('id', threadId)
+          .maybeSingle();
         if (cancelled) return;
-        const meta = ((data as { metadata?: Record<string, unknown> } | null)?.metadata ?? {}) as Record<string, unknown>;
-        const mind = (meta.mind_session ?? {}) as {
+        const mind = ((data as { mind_session?: Record<string, unknown> } | null)?.mind_session ??
+          {}) as {
           busy?: { started_at?: string } | null;
           context_tokens?: number;
           context_limit?: number;
@@ -967,7 +1007,7 @@ export function ConciergePanel() {
     void read();
     const timer = setInterval(() => { void read(); }, 4_000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [openEpisodeId]);
+  }, [threadId]);
 
   // Секундная стрелка для плашки — тикает только пока ход идёт.
   useEffect(() => {
@@ -986,25 +1026,10 @@ export function ConciergePanel() {
     // Ф5: путь МОСТА — одна INSERT-строка, никакого стрима. Ответ Полины
     // придёт Realtime'ом (ветка m.bridge в onNewTurn); занятость показывает
     // плашка «ход в работе», которую снимет его приход.
-    // Сессия ума = ЭПИЗОД (закон моста): студийные треды он пропускает. Вне
-    // страницы эпизода сообщение уходило в `/api/mind/chat`, снесённый на Ф6, и
-    // Директор получал «chat route returned HTTP 404» — отказ, который называет
-    // номер, но не причину. Говорим причину и что сделать (12.08).
-    if (MIND_BRIDGE && !openEpisodeId) {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'user', content: text, createdAt: submittedAt },
-        {
-          role: 'assistant',
-          content:
-            '⚠️ Ум ведёт разговор ПО ЭПИЗОДУ — его сессия привязана к эпизоду, студийного треда у него нет. Откройте эпизод (Эпизоды → нужный) и напишите оттуда.',
-        },
-      ]);
-      setInput('');
-      return;
-    }
-
-    if (MIND_BRIDGE && openEpisodeId) {
+    // Разговор идёт ПО СУЩНОСТИ, которую открыл Директор: эпизод, сериал или
+    // студия. Заглушка «откройте эпизод» (a36831c7) отработала своё — теперь
+    // мост ведёт тред любой сущности, и требовать эпизод больше не нужно.
+    if (MIND_BRIDGE) {
       setMessages((prev) => [...prev, { role: 'user', content: text, createdAt: submittedAt }]);
       setInput('');
       setStreaming(true);
@@ -1012,7 +1037,11 @@ export function ConciergePanel() {
         const res = await fetch('/api/mind/turn', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ episodeId: openEpisodeId, text }),
+          body: JSON.stringify({
+            scope: { kind: contextKind, episodeId: openEpisodeId, seriesId: openSeriesId },
+            tab,
+            text,
+          }),
         });
         const j = (await res.json().catch(() => ({}))) as { ok?: boolean; threadId?: string; error?: string };
         if (!res.ok || !j.ok) {
@@ -1022,7 +1051,7 @@ export function ConciergePanel() {
           ]);
         } else if (j.threadId && j.threadId !== threadId) {
           setThreadId(j.threadId);
-          try { localStorage.setItem(threadKeyFor(openEpisodeId), j.threadId); } catch { /* ignore */ }
+          try { localStorage.setItem(threadKeyFor(entityKey), j.threadId); } catch { /* ignore */ }
         }
       } catch (err) {
         setMessages((prev) => [
@@ -1087,7 +1116,7 @@ export function ConciergePanel() {
           try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
         }
         setThreadId(newThreadId);
-        try { localStorage.setItem(threadKeyFor(openEpisodeId), newThreadId); } catch { /* ignore */ }
+        try { localStorage.setItem(threadKeyFor(entityKey), newThreadId); } catch { /* ignore */ }
       }
       // 2026-05-22 — server-side error envelope detection BEFORE stream parse.
       // When chat route's outer try-catch fires (Supabase quota / unavailable
@@ -1293,12 +1322,15 @@ export function ConciergePanel() {
   // which propagates as req.signal.aborted in the chat route → the
   // server emits {"t":"cancelled"} then closes.
   function handleCancel() {
-    if (MIND_BRIDGE && openEpisodeId) {
+    if (MIND_BRIDGE) {
       // Мост убьёт дерево процесса хода (taskkill /T) и допишет честную строку.
       void fetch('/api/mind/turn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ episodeId: openEpisodeId, cancel: true }),
+        body: JSON.stringify({
+          scope: { kind: contextKind, episodeId: openEpisodeId, seriesId: openSeriesId },
+          cancel: true,
+        }),
       }).catch(() => {});
     }
     abortControllerRef.current?.abort();
@@ -1329,7 +1361,7 @@ export function ConciergePanel() {
       const data = (await res.json()) as { threadId?: string };
       if (!data.threadId) return;
       setThreadId(data.threadId);
-      try { localStorage.setItem(threadKeyFor(openEpisodeId), data.threadId); } catch { /* ignore */ }
+      try { localStorage.setItem(threadKeyFor(entityKey), data.threadId); } catch { /* ignore */ }
       setMessages([]);
       try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
     } catch (err) {
@@ -1344,7 +1376,6 @@ export function ConciergePanel() {
   // руками в базе. Отличие от «Нового разговора» рядом: тот архивирует
   // ПЕРЕПИСКУ, этот забывает ПАМЯТЬ Полины; история тредa остаётся на месте.
   async function handleResetMindSession() {
-    if (!openEpisodeId) return;
     if (typeof window !== 'undefined') {
       const ok = window.confirm(
         'Начать новую сессию ума? Полина забудет текущий разговор и стартует с чистой памятью. Переписка сохранится.',
@@ -1355,7 +1386,10 @@ export function ConciergePanel() {
       const res = await fetch('/api/mind/turn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ episodeId: openEpisodeId, reset: true }),
+        body: JSON.stringify({
+          scope: { kind: contextKind, episodeId: openEpisodeId, seriesId: openSeriesId },
+          reset: true,
+        }),
       });
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string };
@@ -1616,7 +1650,7 @@ export function ConciergePanel() {
             >
               <MessageSquarePlus size={16} />
             </button>
-            {MIND_BRIDGE && openEpisodeId && (
+            {MIND_BRIDGE && (
               <button
                 onClick={() => void handleResetMindSession()}
                 disabled={streaming || turnBusySince !== null}
