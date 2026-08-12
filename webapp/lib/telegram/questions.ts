@@ -72,18 +72,23 @@ function shorten(raw: string): string {
 }
 
 /**
- * Клавиатура: ряд на вопрос, кнопка на вариант. Вопрос без вариантов (открытый)
- * кнопок не рождает — на него отвечают текстом, и подсказывать нечего.
+ * Клавиатура: не больше ДВУХ кнопок в ряд (Директор, 12.08) — три и четыре
+ * варианта в одной строке телеграм сжимает до нечитаемых огрызков подписи.
+ * Вопрос без вариантов (открытый) кнопок не рождает — на него отвечают текстом.
  */
+const PER_ROW = 2;
+
 export function keyboardFor(questions: ParsedQuestion[]): QuestionButton[][] {
-  return questions
-    .filter((q) => q.options.length > 0)
-    .map((q) =>
-      q.options.map((o) => ({
-        text: `${q.number}·${o.digit} ${o.label}`.slice(0, 64),
-        callback_data: `${q.number}${o.digit}`,
-      })),
-    );
+  const rows: QuestionButton[][] = [];
+  for (const q of questions) {
+    if (q.options.length === 0) continue;
+    const buttons = q.options.map((o) => ({
+      text: `${q.number}·${o.digit} ${o.label}`.slice(0, 64),
+      callback_data: `${q.number}${o.digit}`,
+    }));
+    for (let i = 0; i < buttons.length; i += PER_ROW) rows.push(buttons.slice(i, i + PER_ROW));
+  }
+  return rows;
 }
 
 /** Кнопки для текста ответа: разбор + клавиатура одним вызовом. */

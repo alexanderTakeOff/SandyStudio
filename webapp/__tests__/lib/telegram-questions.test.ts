@@ -40,9 +40,12 @@ describe('вопросы Директора превращаются в кноп
 
   it('callback_data — это ответ Директора, а не собственный язык кнопок', () => {
     const kb = keyboardForText(INLINE);
-    expect(kb).toHaveLength(1); // ряд только у вопроса с вариантами
-    expect(kb[0].map((b) => b.callback_data)).toEqual(['031', '032', '033']);
-    for (const b of kb[0]) {
+    // Три варианта ложатся в два ряда: по ДВЕ кнопки в строке (Директор, 12.08) —
+    // три в ряд телеграм сжимает до нечитаемых огрызков подписи.
+    expect(kb).toHaveLength(2);
+    expect(kb.flat().map((b) => b.callback_data)).toEqual(['031', '032', '033']);
+    expect(kb.every((row) => row.length <= 2)).toBe(true);
+    for (const b of kb.flat()) {
       expect(b.text.length).toBeLessThanOrEqual(64); // предел телеграма
       expect(b.callback_data.length).toBeLessThanOrEqual(64);
     }

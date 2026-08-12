@@ -715,6 +715,29 @@ export function ConciergePanel() {
         });
         return;
       }
+      // Ход Директора, рождённый ВНЕ этой вкладки (пульт в телеграме, `mind-say`
+      // из консоли), — рисуем. Ветка ниже молча роняла его, потому что стояла на
+      // допущении «реплики Директора рождаются в этом браузере»: они приходили в
+      // панель только после перезагрузки страницы (история их читает), и разговор
+      // выглядел монологом ума, отвечающего неизвестно кому. Различитель честный:
+      // свой чат-роут `source` не ставит, второй вход — ставит.
+      // Трафика это не добавляет: строки и так приходят подпиской, их выбрасывали.
+      if (turn.role === 'director' && typeof m.source === 'string') {
+        const createdAt = (turn as { created_at?: string }).created_at;
+        setMessages((prev) => {
+          if (prev.some((p) => p.turnId === turn.id)) return prev;
+          return [
+            ...prev,
+            {
+              role: 'user',
+              content: turn.content,
+              turnId: turn.id,
+              ...(createdAt ? { createdAt } : {}),
+            },
+          ];
+        });
+        return;
+      }
       if (turn.role !== 'system') return; // user/assistant flow through chat route
       const kind = m.kind as string | undefined;
       if (kind !== 'claude_message' && kind !== 'pipeline_event') return;
