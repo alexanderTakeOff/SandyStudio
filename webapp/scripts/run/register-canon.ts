@@ -5,6 +5,8 @@
 // Idempotent: called again with the same `--slug` it UPDATES the existing plate
 // instead of creating a twin. That is also how a plate whose preview is broken
 // gets repaired — `--slug` alone rewrites `drive_path` without touching the text.
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { defineTool } from './_tool';
 import { seriesId, seriesCode } from './_env';
 import { persistAsset } from './_asset';
@@ -26,7 +28,12 @@ export default defineTool(
           'НЕ голое имя `eyelid_shutter`. Кадры цепляют его как `<slug>:<kind>`',
       },
       file: { about: 'исходный PNG; пусто — строка чинится без замены байтов', default: '' },
-      desc: { about: 'описание плиты; читается приёмщиком дословно. Пусто — существующее не трогается', default: '' },
+      // Текста у плиты не было пера вовсе (очередь Полины, п.2): картинку заводил
+      // этот инструмент, а ТЕЛО плиты приходилось писать мимо инвентаря — прямым
+      // вызовом роута bible. Два входа в одну строку означают, что лист и слова
+      // о нём расходятся по разным версиям.
+      text: { about: 'файл с ТЕЛОМ плиты (.md) — то, что приёмщик читает как канон. Пусто — существующий текст не трогается', default: '' },
+      desc: { about: 'короткое описание строки. Пусто — существующее не трогается. НЕ путать с `--text`: описание не является каноном', default: '' },
       status: { about: 'статус ассета', default: 'APPROVED' },
       version: { about: 'версия в имени файла', default: 'v01' },
     },
@@ -40,6 +47,8 @@ export default defineTool(
   async ({ arg }) => {
     const slug = arg('slug');
     const file = arg('file');
+    const textFile = arg('text');
+    const content = textFile ? readFileSync(resolve(process.cwd(), textFile), 'utf-8') : undefined;
 
     const res = await persistAsset({
       // Имя собирается только когда есть чем его наполнить: при починке старой
@@ -50,6 +59,7 @@ export default defineTool(
       seriesId: seriesId(),
       status: file ? arg('status') : undefined,
       description: arg('desc') || undefined,
+      content,
       metadata: file ? { origin: 'clean-run direct call', source_frame: file } : undefined,
     });
 

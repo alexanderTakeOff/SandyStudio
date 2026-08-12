@@ -13,10 +13,9 @@
 //   • свежесть превью — при замене байтов под тем же именем браузер держит старую
 //     картинку (DRAFT кэшируется на час, APPROVED/LOCKED — на год как immutable).
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, extname, resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { extname, resolve } from 'node:path';
 import { sb } from './_env';
-import { localCacheAbsPath } from '../../lib/media-cache';
 import { bumpPreviewFreshness, resolvePreviewSrc } from '../../lib/asset-preview-resolver';
 import { assertStoryboardApprovable } from '../../lib/api/animatic-shotlist';
 import { assertCastApprovable } from '../../lib/agents/episode-cast';
@@ -61,6 +60,51 @@ export interface PersistAssetResult {
  * Идемпотентна: повторный вызов с тем же `fileType` в той же области обновляет
  * строку, а не плодит дубль.
  */
+/**
+ * Байты изделия — В КЭШ И НА DRIVE, одним путём для канона и для материалов.
+ *
+ * Здесь стоял голый `copyFileSync` в локальный кэш, и это тихо ломало ЛЮБУЮ плиту
+ * канона: `drive_file_id` оставался null, а гейт финализации отказывается ставить
+ * LOCKED без резервной копии на Drive — «media lives only in the local cache and
+ * would be lost on the next cache clear». То есть плиту, заведённую `register-canon`,
+ * невозможно было залочить в принципе, и узнавал об этом Директор — на кнопке.
+ * `registerEpisodeMedia` рядом всё это время звал `persistBinary` и получал Drive;
+ * две дороги к одному хранилищу разошлись, и одна из них вела в тупик.
+ */
+async function storeBytes(
+  srcPath: string,
+  filename: string,
+  seriesId: string | null,
+  episodeId: string | null,
+): Promise<{ cachedAt: string; driveFileId: string | null }> {
+  const src = resolve(process.cwd(), srcPath);
+  if (!existsSync(src)) throw new Error(`source not found: ${src}`);
+
+  // Канон серии живёт в корзине BIBLE, материалы эпизода — в корзине эпизода
+  // (её `persistBinary` выводит из кода эпизода сам).
+  let seriesCode: string | undefined;
+  if (seriesId) {
+    const { data } = await sb.from('series').select('series_code').eq('id', seriesId).maybeSingle();
+    seriesCode = (data as { series_code?: string } | null)?.series_code;
+  }
+  const episode = episodeId ? await episodeCode(episodeId) : undefined;
+
+  const persisted = await persistBinary({
+    base64: readFileSync(src).toString('base64'),
+    ext: extname(filename).slice(1).toLowerCase() as BinaryExt,
+    driveFilename: filename,
+    ...(seriesCode ? { seriesCode, bucket: 'BIBLE', assetType: 'images' } : {}),
+    ...(episode ? { episodeCode: episode } : {}),
+    supabase: sb as never,
+  });
+  if (persisted.driveUploadFailed) {
+    // ГРОМКО: молчаливый провал здесь и есть та ловушка, из-за которой плита
+    // доходила до кнопки Директора негодной.
+    console.warn(`⚠ ${filename}: Drive не принял байты — строка останется без резервной копии и её нельзя будет залочить.`);
+  }
+  return { cachedAt: persisted.absolutePath, driveFileId: persisted.driveFileId };
+}
+
 export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetResult> {
   if (!a.episodeId && !a.seriesId) {
     throw new Error(`persistAsset(${a.fileType}): нужен episodeId или seriesId — без области ассет не найдётся`);
@@ -88,12 +132,11 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
   if (!filename) throw new Error(`persistAsset(${a.fileType}): новой строке нужно имя файла`);
 
   let cachedAt: string | null = null;
+  let driveFileId: string | null = null;
   if (a.srcPath) {
-    const src = resolve(process.cwd(), a.srcPath);
-    if (!existsSync(src)) throw new Error(`source not found: ${src}`);
-    cachedAt = localCacheAbsPath(filename);
-    mkdirSync(dirname(cachedAt), { recursive: true });
-    copyFileSync(src, cachedAt);
+    const stored = await storeBytes(a.srcPath, filename, a.seriesId ?? null, a.episodeId ?? null);
+    cachedAt = stored.cachedAt;
+    driveFileId = stored.driveFileId;
   }
 
   // Без этого поля карточка молча пишет «no preview» — см. шапку.
@@ -127,10 +170,10 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
       .replace(/-v\d+-/, `-${nextTag}-`)
       .replace(/-(DRAFT|REVIEW|REVISION|APPROVED|LOCKED)(\.[^.]+)$/, `-${status}$2`);
     if (a.srcPath) {
-      const dst = localCacheAbsPath(newFilename);
-      mkdirSync(dirname(dst), { recursive: true });
-      copyFileSync(resolve(process.cwd(), a.srcPath), dst);
-      cachedAt = dst;
+      // Имя новой версии другое — байты укладываются ПОД НИМ, вместе с Drive.
+      const stored = await storeBytes(a.srcPath, newFilename, a.seriesId ?? null, a.episodeId ?? null);
+      cachedAt = stored.cachedAt;
+      driveFileId = stored.driveFileId;
     }
     assertStoryboardApprovable(a.fileType, status, a.content, newFilename);
     assertCastApprovable(a.fileType, status, a.content, a.metadata ?? {});
@@ -142,6 +185,7 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
         file_type: a.fileType,
         filename: newFilename,
         drive_path: `/api/media/${newFilename}`,
+        drive_file_id: driveFileId,
         status,
         description: a.description ?? null,
         // Текст плиты НЕ теряется, когда меняют одни байты: новая версия
@@ -170,6 +214,9 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
     const patch: Record<string, unknown> = {
       filename,
       drive_path: drivePath,
+      // Резервная копия появляется только вместе с новыми байтами; починка строки
+      // без файла не должна затирать существующий `drive_file_id`.
+      ...(driveFileId ? { drive_file_id: driveFileId } : {}),
       // Байты могли смениться под тем же именем — двигаем ключ обхода кэша.
       metadata: bumpPreviewFreshness({ ...(existing.metadata as object), ...(a.metadata ?? {}) }, existing.version),
     };
@@ -244,6 +291,7 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
       file_type: a.fileType,
       filename,
       drive_path: drivePath,
+      drive_file_id: driveFileId,
       status: insertStatus,
       description: a.description ?? null,
       content: insertContent,

@@ -210,14 +210,15 @@ npx tsx scripts/run/publish.ts --file <file> --title <title> --desc-file <desc-f
 Закрепляет кадр каноном серии: PNG в медиа-кэш, строка `assets` под слагом. Повтор обновляет, не дублирует.
 
 ```
-npx tsx scripts/run/register-canon.ts --slug <slug> [--file <file>] [--desc <desc>] [--status <status>] [--version <version>]
+npx tsx scripts/run/register-canon.ts --slug <slug> [--file <file>] [--text <text>] [--desc <desc>] [--status <status>] [--version <version>]
 ```
 
 | аргумент | обязателен | по умолчанию | допустимо | что это |
 |---|---|---|---|---|
 | `--slug` | да | — | — | слаг канона БЕЗ префикса `SBL-`, но С категорией внутри самого слага: `object_eyelid_shutter`, `character_iris_labyrinth`, `location_empty_background` — НЕ голое имя `eyelid_shutter`. Кадры цепляют его как `<slug>:<kind>` |
 | `--file` | — | `` | — | исходный PNG; пусто — строка чинится без замены байтов |
-| `--desc` | — | `` | — | описание плиты; читается приёмщиком дословно. Пусто — существующее не трогается |
+| `--text` | — | `` | — | файл с ТЕЛОМ плиты (.md) — то, что приёмщик читает как канон. Пусто — существующий текст не трогается |
+| `--desc` | — | `` | — | короткое описание строки. Пусто — существующее не трогается. НЕ путать с `--text`: описание не является каноном |
 | `--status` | — | `APPROVED` | — | статус ассета |
 | `--version` | — | `v01` | — | версия в имени файла |
 
