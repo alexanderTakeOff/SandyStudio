@@ -51,7 +51,14 @@ sensitive-файле. Прогон при этом НЕ останавливае
 **Надо:** заменить хардкод на чтение `INNGEST_BASE_URL` / `NEXT_PUBLIC_APP_URL` из
 `webapp/.env.local`. Досье `docs/topics/running-a-run-through-polina.md` уже поправлено так.
 
-### 5 · Спящий фолбэк на порт мастера в OAuth-редиректе
+### 5 · `cast-episode` не предъявляет строку, которую создал
+**12.08 · E07 · `webapp/scripts/run/cast-episode.ts`**
+Печатает `каст оформлен: asset ? · REVIEW` — вместо uuid стоит `?`. По закону студии
+«сделано» предъявляется строкой; инструмент, который её не печатает, заставляет догонять
+собственную работу отдельным вызовом `show-asset`. Строка нашлась —
+`80bbaf10-063d-47c3-8826-4e138072e5f4`, — но искать её пришлось руками.
+
+### 6 · Спящий фолбэк на порт мастера в OAuth-редиректе
 **12.08 · `webapp/app/api/channels/consent/callback/route.ts:70` и
 `webapp/app/api/channels/[id]/consent/route.ts:46`**
 `PUBLIC_ENV.APP_URL || 'http://localhost:3000'` — при пустом env редирект согласия уедет на
