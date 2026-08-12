@@ -16,18 +16,26 @@ applies_when:
 
 ## Hard-won field rules (2026-07-23, first real audience data)
 
-1. **Retention above the channel median is the escalation gate.** Below-median
-   Shorts get reach-capped by the feed (≈1.2k views ceiling observed) and convert
-   **zero** subscribers — fix the retention shape (hook in shot 1, payoff-tease,
-   length cap; see the Storyboarder skill) BEFORE chasing upload volume.
+1. ~~**Retention above the channel median is the escalation gate.**~~ **RETRACTED
+   2026-08-10 — do not act on it.** Own data killed both halves. The link
+   retention→reach does not hold in either direction (27.4% → 1425 views · 77.5% → 6 ·
+   81.6% → 1469 · 9.1% → 3), and the «≈1.2k ceiling» was passed twice. Refusal is
+   observed per-VIDEO, not per-channel, and it is total rather than graded: a clip can
+   sit at a flat zero for hours while its neighbours run.
+   What survives: **reach and retention are separate links and must be read
+   separately** (rule 2), and a fresh channel has no median at all — its own median
+   needs ~5 uploads before the word means anything.
 2. **Views ≠ growth.** The conversion chain is retention → feed escalation →
    subscribers; measure each link separately. A four-digit view count with 0 subs
    is a broken chain, not a success — diagnose the first failing link.
-3. **Respect the metric lag: a number inside the platform's processing window
-   (~2-3 days for YouTube Analytics) is PENDING, not evidence.** Never conclude a
-   growth lesson from a fresh upload's zeros — mark the hypothesis
-   `PENDING-VALIDATION <date>` and only distill it after the unlock date against
-   an aged control.
+3. **Respect the metric lag — but know exactly WHICH metric lags** (sharpened
+   2026-08-01/08-12). The view counter is **live from hour one**: a healthy vertical
+   clip shows hundreds within ~3h, so a flat zero at +3h is a delivery failure, not
+   «data still coming». What genuinely lags ~2-3 days is everything from Analytics —
+   impressions, CTR, average-view-percentage. Consequence: reach can be judged the
+   same day, retention cannot. Mark retention hypotheses `PENDING-VALIDATION <date>`
+   and distill them only after the unlock date against an aged control; never let that
+   caution talk you out of reading a same-day zero for what it is.
 
 ## Standing duty — the viability verdict (owner of «should this exist at all»)
 
