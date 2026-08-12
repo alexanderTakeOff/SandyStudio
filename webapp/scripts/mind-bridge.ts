@@ -386,6 +386,7 @@ async function pollOnce(): Promise<void> {
     .eq('role', 'director')
     .eq('event_type', 'message')
     .contains('metadata', { for_bridge: true, cancel: true })
+    .filter('metadata->bridge', 'is', null)
     .order('created_at', { ascending: true })
     .limit(20);
   for (const c of cancels ?? []) {
@@ -399,12 +400,22 @@ async function pollOnce(): Promise<void> {
   }
 
   // 2. Непринятые сообщения Директора, старейшие первыми (только адресованные).
+  //
+  // «НЕПРИНЯТЫЕ» ОТБИРАЕТ БАЗА, А НЕ ЦИКЛ (12.08, оплачено четырьмя потерянными
+  // сообщениями и жалобой «Полина не отвечает»). Раньше отметка `metadata.bridge`
+  // проверялась ПОСЛЕ выборки, а `limit(50)` с сортировкой по возрастанию отдавал
+  // пятьдесят САМЫХ СТАРЫХ строк. Как только принятых накопилось пятьдесят, окно
+  // забилось ими целиком: мост честно выбирал, честно отбрасывал все до одной и
+  // не видел ничего нового НИКОГДА — при живом процессе, без единой ошибки в логе.
+  // Отказ был бесшумным: последняя запись в bridge.log сделана за 39 минут до
+  // того, как Директор заметил молчание.
   const { data: turns } = await sb
     .from('concierge_turns')
     .select('id,thread_id,content,metadata,created_at')
     .eq('role', 'director')
     .eq('event_type', 'message')
     .contains('metadata', { for_bridge: true })
+    .filter('metadata->bridge', 'is', null)
     .order('created_at', { ascending: true })
     .limit(50);
 
@@ -433,6 +444,9 @@ async function pollOnce(): Promise<void> {
     .eq('event_type', 'message')
     .contains('metadata', { kind: 'pipeline_event' })
     .gt('created_at', BRIDGE_EPOCH)
+    // Та же болезнь, что в пункте 2, только медленнее: без этого фильтра окно
+    // забивается уже принятыми событиями и будильник перестаёт звонить.
+    .filter('metadata->bridge', 'is', null)
     .order('created_at', { ascending: true })
     .limit(30);
   for (const t of sysTurns ?? []) {
