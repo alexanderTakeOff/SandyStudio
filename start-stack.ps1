@@ -177,20 +177,20 @@ if (Test-Path (Join-Path $PolinaClone 'webapp\roles\polina.md')) {
   Start-Process powershell -ArgumentList '-NoProfile','-Command',
     "Set-Location $Web; npx tsx scripts/mind-bridge.ts *>> `"$Web\bridge.log`"" -WindowStyle Minimized
 } else {
-  Write-Host "== mind-bridge SKIPPED: клона Полины нет ($PolinaClone) ==" -ForegroundColor Yellow
+  Write-Host "== mind-bridge SKIPPED: Polina clone not found ($PolinaClone) ==" -ForegroundColor Yellow
 }
 
 # Пульт в телеграме (2026-08-12): второй вход к Полине и второе окно в студию —
 # смотреть и отвечать с телефона. Связь ИСХОДЯЩАЯ (long polling), портов наружу не
 # открывает. Живёт и умирает со стеком, как мост.
 if (-not [string]::IsNullOrWhiteSpace($envMap['TELEGRAM_BOT_TOKEN'])) {
-  Write-Host '== starting telegram-bot (пульт) ==' -ForegroundColor Cyan
+  Write-Host '== starting telegram-bot ==' -ForegroundColor Cyan
   Start-LogRotation "$Web\telegram.log"
   Write-BootBanner "$Web\telegram.log"
   Start-Process powershell -ArgumentList '-NoProfile','-Command',
     "Set-Location $Web; npx tsx scripts/telegram-bot.ts *>> `"$Web\telegram.log`"" -WindowStyle Minimized
 } else {
-  Write-Host '== telegram-bot SKIPPED: TELEGRAM_BOT_TOKEN пуст ==' -ForegroundColor Yellow
+  Write-Host '== telegram-bot SKIPPED: TELEGRAM_BOT_TOKEN empty ==' -ForegroundColor Yellow
 }
 
 Write-Host '== waiting for boot (18s) ==' -ForegroundColor Cyan
