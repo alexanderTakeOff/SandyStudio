@@ -13,7 +13,12 @@
  * "SANDY the HOURGLASS" ~4s, upload unlisted-first.
  */
 
-import { runFfmpeg, runFfprobe } from './ffmpeg-stitch';
+import {
+  runFfmpeg,
+  runFfprobe,
+  assertStreamableDelivery,
+  DELIVERY_MUX_ARGS,
+} from './ffmpeg-stitch';
 
 /** Vertical Shorts master resolution. */
 export const SHORT_WIDTH = 1080;
@@ -198,10 +203,9 @@ export function buildShortArgs(
     '-c:v', 'libx264',
     '-preset', 'veryfast',
     '-crf', '20',
-    '-pix_fmt', 'yuv420p',
     '-c:a', 'aac',
     '-b:a', '192k',
-    '-movflags', '+faststart',
+    ...DELIVERY_MUX_ARGS,
     outputPath,
   );
   return args;
@@ -227,6 +231,7 @@ export async function makeShort(
     effective = { ...opts, clipDurationSec: dur };
   }
   await runFfmpeg(buildShortArgs(inputPath, outputPath, effective));
+  await assertStreamableDelivery(outputPath);
 }
 
 export interface VideoDimensions {

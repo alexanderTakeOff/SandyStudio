@@ -304,6 +304,76 @@ export async function probeDurationSeconds(file: string): Promise<number | null>
   return Number.isFinite(dur) && dur > 0 ? Math.round(dur * 1000) / 1000 : null;
 }
 
+// ─── ЗАКОН ДОСТАВКИ ───────────────────────────────────────────────────────────
+// Как файл выходит НАРУЖУ — в одном месте на всю студию. Раньше этот закон был
+// продублирован в четырёх сборщиках (агентский стич, брендированный мастер,
+// шортс-резак, инструмент прямого прогона `scripts/run/stitch.ts`), и прямой
+// путь потерял `+faststart`: с 01.08 по 13.08 каты выходили с индексом `moov`
+// В КОНЦЕ файла. YouTube принимал их, помечал `nonStreamableMov` — и Shorts-полка
+// НЕ РАЗДАВАЛА ни один такой ролик. Пять роликов из пяти: 0–11 просмотров против
+// 700–1500 у здоровых. Полка живёт мгновенным стартом на свайпе; файл, который
+// надо скачать целиком, чтобы начать проигрывание, она не берёт.
+
+/**
+ * Флаги мукса, без которых готовый файл не раздаётся. Любой сборщик, который
+ * производит файл НА ДОСТАВКУ (кат, брендированный мастер, шорт), обязан их
+ * дописать — и обязан взять их отсюда, а не собрать свои.
+ */
+export const DELIVERY_MUX_ARGS: readonly string[] = [
+  '-pix_fmt', 'yuv420p',
+  '-movflags', '+faststart',
+];
+
+/** Порядок верхнеуровневых атомов ISO-BMFF (`ftyp moov mdat …`) в готовом файле. */
+export async function readTopLevelAtoms(file: string): Promise<string[]> {
+  const handle = await fs.open(file, 'r');
+  try {
+    const size = (await handle.stat()).size;
+    const head = Buffer.alloc(16);
+    const atoms: string[] = [];
+    let offset = 0;
+    while (offset < size && atoms.length < 16) {
+      const { bytesRead } = await handle.read(head, 0, 16, offset);
+      if (bytesRead < 8) break;
+      let boxSize = head.readUInt32BE(0);
+      atoms.push(head.toString('latin1', 4, 8));
+      // `size === 1` → настоящая длина в следующих 8 байтах (64-битный атом).
+      if (boxSize === 1) {
+        if (bytesRead < 16) break;
+        boxSize = Number(head.readBigUInt64BE(8));
+      }
+      if (boxSize < 8) break;
+      offset += boxSize;
+    }
+    return atoms;
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * ПРИЁМКА ВЫХОДНОГО ФАЙЛА. Отказ громкий — по доктрине худший класс отказа это
+ * тишина, а тишина здесь стоила одиннадцати дней нулей: файл собирался, заливался
+ * и публиковался, и ни один шаг не спросил, годен ли он к раздаче.
+ *
+ * Проверяет ровно то, что решает судьбу ролика в ленте: индекс `moov` лежит
+ * ПЕРЕД медиаданными `mdat`.
+ */
+export async function assertStreamableDelivery(file: string): Promise<void> {
+  const atoms = await readTopLevelAtoms(file);
+  const moov = atoms.indexOf('moov');
+  const mdat = atoms.indexOf('mdat');
+  if (moov >= 0 && mdat >= 0 && moov < mdat) return;
+  throw new FfmpegStitchError(
+    `Файл не годен к доставке: индекс moov не впереди медиаданных ` +
+      `(атомы: ${atoms.join(' ') || 'не прочитаны'}). ` +
+      `Такой файл YouTube помечает nonStreamableMov, и Shorts-полка его не раздаёт. ` +
+      `Причина почти всегда одна — сборщик не дописал DELIVERY_MUX_ARGS (+faststart). ` +
+      `Файл: ${file}`,
+    'ffmpeg_failed',
+  );
+}
+
 /**
  * Run ffmpeg with the given args, capturing stderr for error reporting.
  * Resolves with stderr (ffmpeg writes its progress logs there) on exit code 0;
@@ -492,14 +562,11 @@ export async function ffmpegStitchEpisode(
       musicPath ? '1:a' : '0:a?',
       '-c:v',
       'libx264',
-      '-pix_fmt',
-      'yuv420p',
       '-c:a',
       'aac',
       '-b:a',
       '192k',
-      '-movflags',
-      '+faststart',
+      ...DELIVERY_MUX_ARGS,
     );
     if (musicPath) {
       // 2026-06-06 — when music loops infinitely (`-stream_loop -1`), the
@@ -525,6 +592,9 @@ export async function ffmpegStitchEpisode(
     args.push(outPath);
 
     await runFfmpeg(args);
+
+    // Приёмка ДО чтения байтов: негодный кат не должен доехать до вызывающего.
+    await assertStreamableDelivery(outPath);
 
     // 4. Read result.
     const mp4Bytes = await fs.readFile(outPath);
@@ -729,14 +799,11 @@ export function buildFfmpegArgs(args: {
     args.musicPath ? '1:a' : '0:a?',
     '-c:v',
     'libx264',
-    '-pix_fmt',
-    'yuv420p',
     '-c:a',
     'aac',
     '-b:a',
     '192k',
-    '-movflags',
-    '+faststart',
+    ...DELIVERY_MUX_ARGS,
   );
   if (args.musicPath) out.push('-shortest');
   out.push(args.outPath);
