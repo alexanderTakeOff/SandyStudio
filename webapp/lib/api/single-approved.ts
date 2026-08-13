@@ -244,14 +244,14 @@ export interface DemotedSibling {
  */
 export async function demoteSiblingApproved(
   supabase: SupabaseClientLike,
-  args: { slot: SlotDescriptor; currentId: string },
+  args: { slot: SlotDescriptor; currentId: string; allowUnlock?: boolean },
 ): Promise<DemotedSibling[]> {
-  const { slot, currentId } = args;
+  const { slot, currentId, allowUnlock = false } = args;
   // Branch on scope column explicitly so the typed client narrows the column
   // and its value together (episode_id vs series_id) without a union.
   const base = supabase
     .from('assets')
-    .select('id,status,file_type,metadata')
+    .select('id,status,file_type,filename,metadata')
     .eq('status', slot.occupyingStatus)
     .like('file_type', slot.fileTypeLike)
     .neq('id', currentId);
@@ -269,9 +269,28 @@ export async function demoteSiblingApproved(
     id: string;
     status: string;
     file_type: string;
+    filename?: string;
     metadata?: unknown;
   }>) {
     if (!slot.matches(row.metadata, row.file_type)) continue;
+    // ЗАМОК ДИРЕКТОРА ВЫШЕ ИНВАРИАНТА СЛОТА (12.08, очередь Полины п.1).
+    //
+    // У канона серии слот занимает LOCKED (`occupyingStatus: 'LOCKED'` выше), поэтому
+    // постановка новой плиты в APPROVED вытесняла залоченную в INVALIDATED — и делала
+    // это МОЛЧА, обычной строкой в общем выводе. Так ушла плита `d2b6bc15`. Замок,
+    // который снимает инструмент, замком не является: «LOCKED снимает только Директор»
+    // — хард-лимит, и обходить его инвариантом слота нельзя.
+    //
+    // Отказ по умолчанию; снятие возможно только явным `allowUnlock` — то есть решением,
+    // которое кто-то принял и назвал, а не побочным эффектом другой операции.
+    if (row.status === 'LOCKED' && !allowUnlock) {
+      await restoreDemotedSiblings(supabase, demoted);
+      throw new Error(
+        `${row.filename ?? row.id} — LOCKED. Утверждение ${currentId} вытеснило бы залоченную ` +
+          `строку, а замок снимает только Директор. Если снятие санкционировано — повтори с ` +
+          `явным снятием замка (--unlock у set-status); оно будет напечатано отдельным решением.`,
+      );
+    }
     const newMeta = {
       ...((row.metadata as Record<string, unknown> | null) ?? {}),
       demoted_reason: `superseded_by_${currentId}`,

@@ -32,6 +32,14 @@ export default defineTool(
       id: { about: 'uuid строки ассета' },
       status: { about: 'новый статус', values: [...SETTABLE] },
       reason: { about: 'почему; попадает в метаданные и читается потом', default: '' },
+      // Снятие замка — РЕШЕНИЕ, а не побочный эффект утверждения (очередь Полины п.1).
+      unlock: {
+        about:
+          'снять замок с вытесняемой LOCKED-строки того же слота. Только по прямому слову ' +
+          'Директора: без флага утверждение, которое вытеснило бы залоченную строку, отказывает',
+        default: '',
+        values: ['', 'yes'],
+      },
     },
     reads: ['assets'],
     writes: ['assets'],
@@ -63,8 +71,20 @@ export default defineTool(
     if (status === 'APPROVED') {
       const slot = resolveSlotDescriptor(asset as never);
       if (slot) {
-        const demoted = await demoteSiblingApproved(sb as never, { slot, currentId: id });
-        for (const d of demoted) console.log(`вытеснен: ${d.id} (${d.status} → INVALIDATED)`);
+        const allowUnlock = arg('unlock') === 'yes';
+        const demoted = await demoteSiblingApproved(sb as never, { slot, currentId: id, allowUnlock });
+        for (const d of demoted) {
+          // Снятие замка печатается ОТДЕЛЬНЫМ решением: в общем потоке строк оно
+          // выглядело обычным вытеснением и проходило мимо глаз (п.1 очереди).
+          if (d.status === 'LOCKED') {
+            console.log('');
+            console.log(`🔓 СНЯТ ЗАМОК: ${d.id} (LOCKED → INVALIDATED) — по флагу --unlock.`);
+            console.log(`   Основание: ${arg('reason') || '(не названо)'}`);
+            console.log('');
+          } else {
+            console.log(`вытеснен: ${d.id} (${d.status} → INVALIDATED)`);
+          }
+        }
       }
     }
 

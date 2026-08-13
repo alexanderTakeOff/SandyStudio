@@ -105,6 +105,37 @@ async function storeBytes(
   return { cachedAt: persisted.absolutePath, driveFileId: persisted.driveFileId };
 }
 
+/** Версия, названная вызывающим в имени файла (`…-v03-REVIEW.md` → 3). */
+export function versionFromFilename(filename?: string): number | null {
+  const m = filename ? /-v(\d+)-/.exec(filename) : null;
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Заводить ли СОСЕДА вместо правки строки на месте. Вынесено отдельно, потому что
+ * три условия сложились из трёх разных инцидентов и читались как одно выражение:
+ *
+ *  · `contentChanged && status !== DRAFT` — правка после выхода из черновика
+ *    обязана сохранять историю (Директор, 09.08);
+ *  · `touchesLocked` — залоченную строку не правит никто, кроме Директора (11.08);
+ *  · `versionNamed` — названная версия ЕСТЬ приказ завести соседа (12.08, п.8
+ *    очереди Полины: `--version v02` поверх `v01-DRAFT` переименовал строку, и v01
+ *    исчез вместе с возможностью сравнить автора с критиком).
+ */
+export function shouldForkNewVersion(a: {
+  existingVersion: number | null;
+  existingStatus: string | null;
+  askedVersion: number | null;
+  contentChanged: boolean;
+  touchesLocked: boolean;
+}): boolean {
+  const versionNamedAndDifferent =
+    a.askedVersion !== null && a.askedVersion !== (a.existingVersion ?? 1);
+  return (
+    (a.contentChanged && a.existingStatus !== 'DRAFT') || a.touchesLocked || versionNamedAndDifferent
+  );
+}
+
 export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetResult> {
   if (!a.episodeId && !a.seriesId) {
     throw new Error(`persistAsset(${a.fileType}): нужен episodeId или seriesId — без области ассет не найдётся`);
@@ -153,12 +184,32 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
   // а имя файла пересобиралось в `-APPROVED.png`. Любое касание LOCKED уходит в
   // версию max+1 со статусом REVIEW: правка живёт, замок цел, решение — за
   // Директором (та же формулировка, что в `set-status.ts`).
+  // НАЗВАННАЯ ВЕРСИЯ — ЭТО ПРИКАЗ ЗАВЕСТИ СОСЕДА (12.08, очередь Полины п.8).
+  //
+  // Контракт `write-asset` печатал дословно: «новая версия заводит соседа, не затирает
+  // историю». Но правило выше пропускает DRAFT «итерироваться на месте» — и вызов
+  // `--type SCR-script --version v02` поверх живого `v01-DRAFT` вернул тот же uuid,
+  // ПЕРЕИМЕНОВАВ строку: v01 в эпизоде не осталось. Сравнить работу автора с работой
+  // критика стало нечем. Итерация DRAFT на месте — разумное умолчание, но только пока
+  // версию НЕ НАЗВАЛИ: назвал версию — значит просишь историю, а не правку.
+  const askedVersion = versionFromFilename(a.filename);
   const locked = existing?.status === 'LOCKED';
   const contentChanged = Boolean(existing) && a.content !== undefined && a.content !== existing!.content;
   const touchesLocked =
     locked && (Boolean(a.srcPath) || contentChanged || a.description !== undefined || Boolean(a.status));
-  if (existing && ((contentChanged && existing.status !== 'DRAFT') || touchesLocked)) {
-    const nextVersion = ((existing.version as number | null) ?? 1) + 1;
+  const fork =
+    existing !== undefined &&
+    shouldForkNewVersion({
+      existingVersion: (existing.version as number | null) ?? null,
+      existingStatus: (existing.status as string | null) ?? null,
+      askedVersion,
+      contentChanged,
+      touchesLocked,
+    });
+  if (existing && fork) {
+    // Названную версию уважаем, но назад не откатываемся: сосед всегда СТАРШЕ
+    // существующей строки, иначе история читалась бы в обратном порядке.
+    const nextVersion = Math.max(((existing.version as number | null) ?? 1) + 1, askedVersion ?? 0);
     const nextTag = `v${String(nextVersion).padStart(2, '0')}`;
     const status = touchesLocked ? 'REVIEW' : (a.status ?? 'REVIEW');
     if (touchesLocked) {

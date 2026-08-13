@@ -263,7 +263,7 @@ npx tsx scripts/run/register-media.ts --file <file> --kind <kind> [--shot <shot>
 Меняет статус изделия и держит инвариант «один утверждённый на слот». LOCK не ставит — он за Директором.
 
 ```
-npx tsx scripts/run/set-status.ts --id <id> --status <status> [--reason <reason>]
+npx tsx scripts/run/set-status.ts --id <id> --status <status> [--reason <reason>] [--unlock <unlock>]
 ```
 
 | аргумент | обязателен | по умолчанию | допустимо | что это |
@@ -271,6 +271,7 @@ npx tsx scripts/run/set-status.ts --id <id> --status <status> [--reason <reason>
 | `--id` | да | — | — | uuid строки ассета |
 | `--status` | да | — | `DRAFT` · `REVIEW` · `REVISION` · `APPROVED` · `INVALIDATED` · `NEEDS_HUMAN_TWEAK` | новый статус |
 | `--reason` | — | `` | — | почему; попадает в метаданные и читается потом |
+| `--unlock` | — | `` | `` · `yes` | снять замок с вытесняемой LOCKED-строки того же слота. Только по прямому слову Директора: без флага утверждение, которое вытеснило бы залоченную строку, отказывает |
 
 **читает:** `assets`
 
