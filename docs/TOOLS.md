@@ -15,7 +15,7 @@
 | [`ensure-episode`](#ensure-episode) | Заводит строку эпизода или находит существующую. Печатает id для `RUN_EPISODE_ID`. |
 | [`gen-frame`](#gen-frame) | Один кадр за вызов: промпт из файла, канон-референсы по слагам, цена в `budget_log`. |
 | [`gen-video`](#gen-video) | Один клип из кадра: пад до 9:16 своим цветом стены, затем image-to-video на Seedance. |
-| [`publish`](#publish) | Заливает готовый кат на канал серии, упаковку берёт из паспорта канала, id видео пишет в эпизод. |
+| [`publish`](#publish) | Заливает готовый кат на канал серии: упаковку берёт из утверждённого SPC-metadata, ставит обложку, добавляет в плейлист, id видео пишет в эпизод. |
 | [`register-canon`](#register-canon) | Закрепляет кадр каноном серии: PNG в медиа-кэш, строка `assets` под слагом. Повтор обновляет, не дублирует. |
 | [`register-media`](#register-media) | Заводит кадр, клип, кат или музыку эпизода в студию — с типом и метаданными, которые читает лента. |
 | [`set-status`](#set-status) | Меняет статус изделия и держит инвариант «один утверждённый на слот». LOCK не ставит — он за Директором. |
@@ -181,24 +181,24 @@ npx tsx scripts/run/gen-video.ts --frame <frame> --prompt-file <prompt-file> --o
 
 ### publish
 
-Заливает готовый кат на канал серии, упаковку берёт из паспорта канала, id видео пишет в эпизод.
+Заливает готовый кат на канал серии: упаковку берёт из утверждённого SPC-metadata, ставит обложку, добавляет в плейлист, id видео пишет в эпизод.
 
 ```
-npx tsx scripts/run/publish.ts --file <file> --title <title> --desc-file <desc-file> [--privacy <privacy>]
+npx tsx scripts/run/publish.ts --file <file> [--title <title>] [--desc-file <desc-file>] [--privacy <privacy>]
 ```
 
 | аргумент | обязателен | по умолчанию | допустимо | что это |
 |---|---|---|---|---|
 | `--file` | да | — | — | готовый кат MP4 |
-| `--title` | да | — | — | заголовок публикации |
-| `--desc-file` | да | — | — | файл с описанием |
+| `--title` | — | `` | — | ПЕРЕКРЫТИЕ заголовка; пусто — берётся из APPROVED SPC-metadata |
+| `--desc-file` | — | `` | — | ПЕРЕКРЫТИЕ описания файлом; пусто — берётся из APPROVED SPC-metadata |
 | `--privacy` | — | `public` | `public` · `unlisted` · `private` | видимость на площадке |
 
 **env:**
 - `RUN_EPISODE_ID` — эпизод, на который записывается публикация
 - `RUN_SERIES_ID` — сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу
 
-**читает:** `series`, `channels`, `episodes`
+**читает:** `series`, `channels`, `episodes`, `assets`
 
 **пишет:** `episodes`
 
@@ -427,7 +427,7 @@ npx tsx scripts/run/write-asset.ts --type <type> --file <file> [--status <status
 
 | аргумент | обязателен | по умолчанию | допустимо | что это |
 |---|---|---|---|---|
-| `--type` | да | — | — | тип по конвенции: `SCR-script`, `STB-storyboard`, `SPC-ref_plan-<shot>`, `SPC-shot_plan-<shot>`, `SPC-metadata`, `SPC-thumb_plan`, `SPC-brief` |
+| `--type` | да | — | — | тип по конвенции: `SCR-script`, `STB-storyboard`, `SPC-ref_plan-<shot>`, `SPC-shot_plan-<shot>`, `SPC-metadata`, `SPC-thumb_plan`, `SPC-brief`. ДЛЯ `SPC-metadata` тело обязано нести ровно три секции с АНГЛИЙСКИМИ заголовками — `## Title`, `## Description`, `## Tags` (теги через запятую или строками). Русские заголовки разбор НЕ находит: гейт публикации откажет, назвав недостающие секции. Всё, что видит зритель, пишется на языке канала (`publish_defaults.default_language`, по умолчанию английский) |
 | `--file` | да | — | — | файл с телом документа; читается дословно, пересказ не делается |
 | `--status` | — | `DRAFT` | `DRAFT` · `REVIEW` · `REVISION` · `APPROVED` | статус строки; LOCKED здесь не ставится — он за Директором |
 | `--version` | — | `v01` | — | версия в имени файла; новая версия заводит соседа, не затирает историю |

@@ -74,6 +74,12 @@ async function compress(bytes: Uint8Array): Promise<Uint8Array | null> {
     const content = metaRows?.[0]?.content;
     if (!content) { console.log(`⏭  ${ep} [${vid}]: no APPROVED SPC-metadata`); continue; }
 
+    // ГЕЙТ УПАКОВКИ СЮДА СОЗНАТЕЛЬНО НЕ ПОДКЛЮЧЁН (13.08). Скрипт живёт под
+    // LEGACY_SINGLE_CHANNEL=1 и относится к одноканальной эпохе: он чинит МЕТАДАННЫЕ
+    // УЖЕ ОПУБЛИКОВАННЫХ видео, а не выпускает новые. Прогонять его через
+    // assertPublishable значило бы блокировать починку старых записей по закону,
+    // принятому позже них. Новые публикации идут через publish.ts / EXEC-PUB, где
+    // гейт стоит.
     const { title, description, tags } = parseVideoMetadata(content);
     console.log(`\n${ep} [${vid}]  title="${title}"  desc=${description.length}c  tags=${tags.length}`);
     try {

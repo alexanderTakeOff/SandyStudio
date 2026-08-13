@@ -47,6 +47,19 @@ export interface AnimaticShot {
 
 /** Director's per-shot duration tweaks, persisted alongside the canonical list. */
 export interface AnimaticDirectorOverride {
+  /**
+   * ВЕРХНЯЯ ГРАНИЦА, НЕ ТОЧНАЯ ДЛИНА (записано 13.08 — очередь Полины п.16).
+   *
+   * Кусок играет `min(duration_seconds, длительность_клипа − trim_start_seconds)`;
+   * считает это `computeEffectivePlayback` — она одна на кат, плеер и агентский путь.
+   * Если `trim_start + duration` вылезает за конец клипа, это НЕ противоречие: хвост
+   * обрезается краем, и так задумано.
+   *
+   * Почему записано: ум дважды (E06 и E07) прочёл поле как точную длину, счёл вылет
+   * ошибкой и «починил» его сдвигом `trim_start_seconds` — в кат попала середина
+   * кадра вместо конца. Семантика не была объявлена нигде, и каждый читатель
+   * додумывал её по-своему.
+   */
   duration_seconds: number;
   /**
    * 2026-06-06 — optional head trim. When set, EXEC-STITCH emits an `inpoint

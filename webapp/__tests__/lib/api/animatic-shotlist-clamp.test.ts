@@ -226,3 +226,40 @@ describe('excludedShotIdsFromEpisodeMeta', () => {
     expect(excludedShotIdsFromEpisodeMeta({ excluded_shot_ids: 'nope' }).size).toBe(0);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// E07 (12.08) — три реальные строки, на которых ум ошибся ВТОРОЙ раз (первый был
+// на E06). Он прочёл `duration_seconds` как ТОЧНУЮ длину, увидел, что
+// `trim_start + duration` вылезает за конец клипа, счёл это противоречием и
+// «починил» сдвигом точки входа — в кат попала середина кадра вместо конца.
+// Противоречия нет: поле — потолок, хвост обрезается краем клипа. Эти три строки
+// стоят здесь как напоминание в виде цифр, а не в виде правила.
+// ──────────────────────────────────────────────────────────────────────────────
+describe('E07 — duration_seconds это ПОТОЛОК, а не точная длина', () => {
+  const cases = [
+    { id: 'SH01', clip: 11.04, trim: 7.0, duration: 7.5, plays: 4.04 },
+    { id: 'SH02', clip: 15.04, trim: 9.5, duration: 14, plays: 5.54 },
+    { id: 'SH04', clip: 13.04, trim: 7.5, duration: 10, plays: 5.54 },
+  ];
+  for (const c of cases) {
+    it(`${c.id}: клип ${c.clip}s, trim ${c.trim}s, duration ${c.duration}s → играет ${c.plays}s`, () => {
+      const playable = computeEffectivePlayback(
+        shot(c.id, c.duration),
+        { [c.id]: { duration_seconds: c.duration, trim_start_seconds: c.trim } },
+        new Map([[c.id, c.clip]]),
+      );
+      expect(playable).toBeCloseTo(c.plays, 2);
+      // И главное: длина МЕНЬШЕ объявленной — это норма, а не сигнал чинить trim.
+      expect(playable).toBeLessThan(c.duration);
+    });
+  }
+
+  it('когда всё помещается — играет ровно объявленное', () => {
+    const playable = computeEffectivePlayback(
+      shot('SH05', 6),
+      { SH05: { duration_seconds: 6, trim_start_seconds: 1 } },
+      new Map([['SH05', 12]]),
+    );
+    expect(playable).toBe(6);
+  });
+});

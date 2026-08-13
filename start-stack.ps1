@@ -111,6 +111,13 @@ Start-Sleep -Seconds 2
 if ($Build) {
   Write-Host '== rebuilding app (clean) ==' -ForegroundColor Cyan
   if (Test-Path .next) { Remove-Item -Recurse -Force .next }
+  # МЕТКА СБОРКИ (13.08). Контрольное слово Директора «это точно новый билд?»
+  # должно отвечаться фактом, а не памятью ума: sha снимается ЗДЕСЬ, в момент
+  # сборки, вшивается в бандл и отдаётся `/api/health`. Ум может лишь прочитать
+  # его вслух — соврать о нём он не может.
+  $env:NEXT_PUBLIC_BUILD_SHA = (git -C $RepoRoot rev-parse --short HEAD)
+  $env:NEXT_PUBLIC_BUILD_AT = (Get-Date -Format 'yyyy-MM-dd HH:mm')
+  Write-Host "   build sha: $env:NEXT_PUBLIC_BUILD_SHA  ($env:NEXT_PUBLIC_BUILD_AT)" -ForegroundColor Yellow
   npm run build
   if ($LASTEXITCODE -ne 0) { Write-Host 'BUILD FAILED - aborting.' -ForegroundColor Red; Read-Host 'Enter to exit'; exit 1 }
 }

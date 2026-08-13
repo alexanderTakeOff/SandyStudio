@@ -67,12 +67,79 @@ function cleanDescription(md: string): string {
     .trim();
 }
 
-export function parseVideoMetadata(md: string, fallbackTitle?: string): PublishMetadata {
-  const title = (extractTitle(md) || fallbackTitle || '').slice(0, 100);
-  const description = cleanDescription(md);
+/**
+ * Что документ РЕАЛЬНО содержит — без единой подстановки.
+ *
+ * Разделено с `parseVideoMetadata` 13.08 (очередь Полины п.17): фолбэк на имя эпизода
+ * подставляется ВНУТРИ разбора, поэтому проверить «а нашлось ли вообще что-нибудь»
+ * по его результату невозможно — оба живых читателя фолбэк передают, и пустой заголовок
+ * приходит уже подменённым. Гейт публикации смотрит СЮДА, до всякой подстановки.
+ */
+export function extractRawMetadata(md: string): PublishMetadata {
   const tagsRaw = sectionBody(md, 'tags');
-  const tags = tagsRaw
-    ? tagsRaw.split(/[,\n]/).map((t) => t.replace(/^[-*•#\s]+/, '').trim()).filter(Boolean).slice(0, 30)
-    : [];
-  return { title, description, tags };
+  return {
+    title: extractTitle(md),
+    description: cleanDescription(md),
+    tags: tagsRaw
+      ? tagsRaw.split(/[,\n]/).map((t) => t.replace(/^[-*•#\s]+/, '').trim()).filter(Boolean).slice(0, 30)
+      : [],
+  };
+}
+
+export function parseVideoMetadata(md: string, fallbackTitle?: string): PublishMetadata {
+  const raw = extractRawMetadata(md);
+  return {
+    title: (raw.title || fallbackTitle || '').slice(0, 100),
+    description: raw.description,
+    tags: raw.tags,
+  };
+}
+
+const CYRILLIC = /[Ѐ-ӿ]/;
+
+/**
+ * ГЕЙТ УПАКОВКИ: изделие не уезжает на канал недооформленным.
+ *
+ * Инцидент E07 (13.08): документ `SPC-metadata` был написан русскими заголовками
+ * («## Заголовок» вместо «## Title»), разбор вернул пустоту по всем трём полям, пустой
+ * заголовок молча подменился кодом эпизода — и на канал уехало бы «SS-S20-E07» с пустым
+ * описанием и без тегов. Тихий отказ: видео опубликовано, брак незаметен.
+ *
+ * Проверяется СЫРОЙ разбор (`extractRawMetadata`), потому что после подстановки фолбэка
+ * отличить «автор не написал» от «автор написал» уже нельзя.
+ *
+ * Язык берётся из паспорта канала (`publish_defaults.default_language`), а не хардкодом:
+ * архитектура мультиканальная, и «всегда английский» стал бы ложным блокером для первого
+ * же неанглоязычного канала.
+ */
+export function assertPublishable(
+  raw: PublishMetadata,
+  opts: { source: string; language?: string | null },
+): void {
+  const missing: string[] = [];
+  if (!raw.title.trim()) missing.push('## Title');
+  if (!raw.description.trim()) missing.push('## Description');
+  if (raw.tags.length === 0) missing.push('## Tags');
+  if (missing.length > 0) {
+    throw new Error(
+      `${opts.source}: упаковка не читается — не найдено ${missing.join(', ')}. ` +
+        `Секции ищутся по АНГЛИЙСКИМ заголовкам (## Title · ## Description · ## Tags); ` +
+        `русские заголовки разбор не находит и молча отдаёт пустоту. Перепиши документ и повтори.`,
+    );
+  }
+
+  const language = (opts.language ?? 'en').toLowerCase();
+  if (language.startsWith('en')) {
+    const cyrillicIn = [
+      raw.title && CYRILLIC.test(raw.title) ? 'заголовке' : '',
+      raw.description && CYRILLIC.test(raw.description) ? 'описании' : '',
+      raw.tags.some((t) => CYRILLIC.test(t)) ? 'тегах' : '',
+    ].filter(Boolean);
+    if (cyrillicIn.length > 0) {
+      throw new Error(
+        `${opts.source}: кириллица в ${cyrillicIn.join(', ')}, а язык канала — ${language}. ` +
+          `Всё, что видит зритель, пишется на языке канала (закон Директора 13.08).`,
+      );
+    }
+  }
 }

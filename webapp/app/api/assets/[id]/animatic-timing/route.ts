@@ -31,6 +31,7 @@ import { enforceMode } from '@/lib/governance';
 import {
   isAnimaticV1,
   computeTotalDuration,
+  computeEffectivePlayback,
   clipLengthsFromVidShotRows,
   type AnimaticContract,
   type AnimaticDirectorOverride,
@@ -369,10 +370,28 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     },
   } as never);
 
+  // ФАКТИЧЕСКАЯ ДЛИНА ВОЗВРАЩАЕТСЯ ТОМУ, КТО ПРАВИЛ (13.08, очередь Полины п.16).
+  //
+  // `duration_seconds` — ПОТОЛОК, а не точная длина: кусок играет
+  // `min(duration, клип − trim_start)`. Тот, кто правит тайминги глазами в плеере,
+  // видит это сразу; тот, кто правит вызовом, не видел ничего — и ум дважды (E06,
+  // E07) прочёл поле как точную длину, счёл вылет за конец клипа противоречием и
+  // «починил» его сдвигом `trim_start`. В кат попала середина кадра вместо конца.
+  // Арифметику считает та же `computeEffectivePlayback`, что и кат с плеером —
+  // здесь она только ПРЕДЪЯВЛЯЕТСЯ, чтобы автору правки нечего было додумывать.
+  const effective = Object.fromEntries(
+    v1.shot_list.map((shot) => [
+      shot.shot_id,
+      computeEffectivePlayback(shot, mergedOverrides, clipLengths),
+    ]),
+  );
+
   return apiOk({
     asset_id: assetId,
     director_overrides: mergedOverrides,
     total_duration: newTotal,
+    /** Сколько кадр РЕАЛЬНО играет: min(duration, клип − trim_start). Не выводить самому. */
+    effective_playback_seconds: effective,
     mode_at_time: decision.modeAtTime,
   });
 });
