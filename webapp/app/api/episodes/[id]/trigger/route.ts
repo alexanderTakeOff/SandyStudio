@@ -18,7 +18,7 @@ import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { resolveShotId } from '@/lib/api/shot-id';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
-import { assertPlanRegenWithinCap } from '@/lib/api/plan-regen-guard';
+import { assertPlanIsFreshAndExecutable, assertPlanRegenWithinCap } from '@/lib/api/plan-regen-guard';
 import { validateShotReadyForGeneration } from '@/lib/api/shot-readiness';
 
 export const runtime = 'nodejs';
@@ -262,6 +262,16 @@ export const POST = withApiHandler(async (req, ctx) => {
       agentId: body.agentCode,
       planAssetId: guardPlanAssetId,
       principal: dir.principal,
+      shotId: guardShotId,
+    });
+    // Кнопка исполняет ТОЛЬКО свежий и машиночитаемый план (12.08, E07/SH05:
+    // панель послала исполнителя на v01, когда живой была v02 с правками
+    // Директора). Проверка стоит ДО траты и до запуска агента; сестринский роут
+    // /regenerate-image-from-plan зовёт ту же функцию — правило одно на оба входа.
+    await assertPlanIsFreshAndExecutable({
+      supabase,
+      episodeId: id,
+      planAssetId: guardPlanAssetId,
       shotId: guardShotId,
     });
   }

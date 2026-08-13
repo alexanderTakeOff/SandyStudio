@@ -45,7 +45,7 @@ import {
   checkPlanAnchorFreshness,
   formatStaleAnchorMessage,
 } from '@/lib/agents/runners/episode-reference-freshness';
-import { assertPlanRegenWithinCap } from '@/lib/api/plan-regen-guard';
+import { assertPlanIsFreshAndExecutable, assertPlanRegenWithinCap } from '@/lib/api/plan-regen-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -153,22 +153,15 @@ export const POST = withApiHandler(async (req, ctx) => {
       `Shot ${shotId} is in REVISION — the factory is re-authoring its plan from the Director's note and will re-render automatically. Executing a plan now races that and can render the stale pre-revision plan. Wait for the re-author to land, or use regenerateRefPlan.`,
     );
   }
-  const { data: shotPlanRows } = await supabase
-    .from('assets')
-    .select('id,version,status,file_type,metadata')
-    .eq('episode_id', episodeId)
-    .like('file_type', 'SPC-ref_plan%');
-  const latestShotPlan = ((shotPlanRows ?? []) as Array<{ id: string; version?: number; status?: string; file_type?: string; metadata?: unknown }>)
-    .filter((r) => r.status !== 'INVALIDATED')
-    .filter((r) =>
-      (r.metadata as { shot_id?: string } | null)?.shot_id === shotId ||
-      (r.file_type ?? '') === `SPC-ref_plan-${shotId}`)
-    .sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0];
-  if (latestShotPlan && latestShotPlan.id !== body.planAssetId) {
-    throw new ConflictError(
-      `Plan ${body.planAssetId} is superseded for shot ${shotId} — a newer plan exists (${latestShotPlan.id}, v${latestShotPlan.version ?? '?'}, ${latestShotPlan.status}). Execute the latest plan instead.`,
-    );
-  }
+  // Свежесть плана + его исполнимость проверяет ОБЩИЙ чокпоинт: та же функция
+  // зовётся из /trigger (кнопка панели). Инлайн-копия жила здесь и не жила там —
+  // ровно поэтому кнопка смогла послать исполнителя на отменённую v01 (E07/SH05).
+  await assertPlanIsFreshAndExecutable({
+    supabase,
+    episodeId,
+    planAssetId: body.planAssetId,
+    shotId,
+  });
 
   // ── TD-35 freshness guard ───────────────────────────────────────────────
   // Parse the Plan's continuity_anchors[] from its content JSON block and

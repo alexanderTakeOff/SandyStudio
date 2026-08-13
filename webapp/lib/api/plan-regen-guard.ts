@@ -166,6 +166,85 @@ export async function assertPlanRegenWithinCap(
   }
 }
 
+/**
+ * ГЕЙТ КНОПКИ: исполняется САМЫЙ СВЕЖИЙ план, и только машиночитаемый.
+ *
+ * Директор, 12.08: «кнопка должна работать правильно». Инцидент E07/SH05: панель
+ * послала исполнителя на план **v01**, тогда как живой была **v02** с правками
+ * Директора (три строки, оранжевый, тусклый планктон). Агент упал на разборе — и
+ * это была УДАЧА: распарсив, он отрендерил бы отменённую версию за деньги, и
+ * никто бы не заметил подмены.
+ *
+ * Две проверки, обе до траты и до запуска агента:
+ *
+ *  1. **Свежесть.** Существует более новая версия плана этого шота → отказ с
+ *     указанием, какую исполнять. Проверка жила ТОЛЬКО в
+ *     `/regenerate-image-from-plan`, а `/trigger` (та самая кнопка) принимал
+ *     `planAssetId` из тела запроса и исполнял что дали — два входа к одному
+ *     исполнителю с разными правилами. Теперь правило одно и живёт здесь.
+ *
+ *  2. **Исполнимость.** В новой парадигме план пишет УМ — прозой, с разбором и
+ *     промптом в текстовом блоке, потому что исполняет его сам через `gen-frame`.
+ *     Старый конвейерный исполнитель ждёт в том же `file_type` JSON-контракт.
+ *     Два читателя одного типа изделия, договора между ними нет. Пока договор не
+ *     написан, кнопка обязана отказывать ВНЯТНО («это план для ума»), а не
+ *     ронять агента сообщением про code block.
+ */
+export async function assertPlanIsFreshAndExecutable(args: {
+  supabase: ServerSupabaseClient;
+  episodeId: string;
+  planAssetId: string;
+  shotId?: string;
+}): Promise<void> {
+  const { supabase, episodeId, planAssetId, shotId } = args;
+
+  if (shotId) {
+    const { data: planRows } = await supabase
+      .from('assets')
+      .select('id,version,status,file_type,metadata')
+      .eq('episode_id', episodeId)
+      .like('file_type', 'SPC-ref_plan%');
+    const latest = ((planRows ?? []) as Array<{
+      id: string;
+      version?: number;
+      status?: string;
+      file_type?: string;
+      metadata?: unknown;
+    }>)
+      .filter((r) => r.status !== 'INVALIDATED')
+      .filter(
+        (r) =>
+          (r.metadata as { shot_id?: string } | null)?.shot_id === shotId ||
+          (r.file_type ?? '') === `SPC-ref_plan-${shotId}`,
+      )
+      .sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0];
+    if (latest && latest.id !== planAssetId) {
+      throw new ConflictError(
+        `План ${planAssetId} вытеснен: у шота ${shotId} есть более свежий — ${latest.id} ` +
+          `(v${latest.version ?? '?'}, ${latest.status}). Исполнять надо его: старая версия ` +
+          `не содержит правок Директора и отрендерит отменённое.`,
+      );
+    }
+  }
+
+  const { data: plan } = await supabase
+    .from('assets')
+    .select('content,file_type')
+    .eq('id', planAssetId)
+    .maybeSingle();
+  const content = (plan as { content?: string | null } | null)?.content ?? '';
+  // Тот же разбор, что у исполнителя (`parseLastJsonBlock`), но здесь он решает
+  // не «как рендерить», а «применима ли кнопка вообще».
+  const hasJsonBlock = /```json\s*[\s\S]*?```/i.test(content) || /```\s*\{[\s\S]*?```/.test(content);
+  if (!hasJsonBlock) {
+    throw new ConflictError(
+      `План ${planAssetId} написан как ДОКУМЕНТ для ума (без JSON-контракта), а кнопка ` +
+        `запускает конвейерного исполнителя, который читает только JSON. Исполнять этот план ` +
+        `должен ум — прямым вызовом gen-frame. Кнопка применима к планам, рождённым агентом-дизайнером.`,
+    );
+  }
+}
+
 export interface BillingLockState {
   /** True when a provider billing wall is standing and uncleared. */
   locked: boolean;
