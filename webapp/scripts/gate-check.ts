@@ -2,13 +2,15 @@
 // инфраструктура харнеса, не рука Полины: в реестр TOOLS.md и в карту маршрута
 // не попадает.
 //
-//   npx tsx scripts/gate-check.ts --kind spend    → exit 2 + stderr, если тратить нельзя
 //   npx tsx scripts/gate-check.ts --kind context  → 5-8 строк состояния эпизода в stdout
+//
+// `--kind spend` удалён 13.08 вместе с PreToolUse-хуком Полины: он дублировал
+// `assertEpisodeReadyToSpend`, а потолок эпизода переехал туда же. Деньги считает и
+// лимит держит КОД инструмента — одинаково для обеих рук, а не решётка над одной.
 //
 // Эпизод — ТОЛЬКО из RUN_EPISODE_ID (его выставляет мост на ход): хук не
 // принимает эпизод аргументом, чтобы его нельзя было подменить из промпта.
 import { sb } from './run/_env';
-import { assertEpisodeReadyToSpend } from './run/_asset';
 import { splitLedger, type BudgetSplit, type LedgerRow } from '../lib/budget-split';
 
 // Деньги эпизода — ДВЕ РАЗНЫЕ ВЕЛИЧИНЫ; правило разделения общее с шапкой
@@ -37,38 +39,6 @@ async function main(): Promise<void> {
   if (error || !ep) {
     console.error(`gate-check: эпизод ${episodeId} не найден (${error?.message ?? '—'})`);
     process.exit(2);
-  }
-
-  if (kind === 'spend') {
-    // Тот же гейт, что внутри инструментов (D90) — хук дублирует его ДО запуска
-    // npx, чтобы отказ стоил ноль, и держит правило, даже если инструмент сломают.
-    try {
-      await assertEpisodeReadyToSpend(episodeId);
-    } catch (e) {
-      console.error(String(e instanceof Error ? e.message : e));
-      process.exit(2);
-    }
-    const { direct, indirect } = await spentUsd(episodeId);
-
-    // ЛИЧНЫЙ ЛИМИТ ПОЛИНЫ — ПРЕДУПРЕЖДЕНИЕ, НЕ СТЕНА (Директор, 10.08: «пока
-    // горячимся — счётчика расходов в режиме подписки у нас ещё нет; warning да,
-    // блокировать не надо»). Стена, построенная на цифре, которой мы сами не
-    // доверяем, остановит работу по ложному поводу — а это дороже перерасхода.
-    // Предупреждение живёт в контекстной строке каждого хода (--kind context).
-    // Единственная настоящая стена здесь — потолок эпизода по ПРЯМЫМ тратам.
-    const ceiling = Number(ep.budget_ceiling ?? 0);
-    if (ceiling > 0 && direct >= ceiling) {
-      console.error(
-        `${ep.episode_code}: потолок исчерпан — ПРЯМЫХ трат $${direct.toFixed(2)} из $${ceiling.toFixed(2)}. ` +
-          'Поднять потолок может только Директор (Episode Settings).',
-      );
-      process.exit(2);
-    }
-    console.log(
-      `gate ok · прямые $${direct.toFixed(2)} из $${ceiling.toFixed(2)}` +
-        ` · подписка (косвенно, деньгами не списывается) $${indirect.toFixed(2)}`,
-    );
-    return;
   }
 
   if (kind === 'context') {

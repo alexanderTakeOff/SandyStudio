@@ -24,6 +24,7 @@ import { persistBinary, type BinaryExt } from '../../lib/persist-binary';
 import { SHOT_REFERENCE_CONTRACT, isShotReferenceV2 } from '../../lib/api/shot-reference';
 import { resolveSlotDescriptor, demoteSiblingApproved } from '../../lib/api/single-approved';
 import { logEvent } from '../../lib/api/events';
+import { splitLedger, type LedgerRow } from '../../lib/budget-split';
 
 export interface PersistAssetArgs {
   /**
@@ -397,6 +398,26 @@ export async function assertEpisodeReadyToSpend(episodeId: string): Promise<void
         'Правило Директора: после брифа работа не идёт, пока не утверждены настройки эпизода ' +
         'и потолок. Их ставит ДИРЕКТОР в Episode Settings — попроси и жди, обойти нечем.',
     );
+  }
+
+  // ПОТОЛОК — здесь, а не в хуке над одной рукой (Директор, 13.08: «считать деньги — код,
+  // проверять лимиты — код; принимать решение при наличии данных и информировать Директора —
+  // ассистент»). Раньше исчерпание потолка стерёг только `gate-check --kind spend`, то есть
+  // Полина, а Тео с тем же инструментом проходил свободно. Закон, который у одного ума держится
+  // решёткой, а у другого словом, — не закон.
+  const ceiling = Number(data.budget_ceiling ?? 0);
+  if (ceiling > 0) {
+    const { data: ledger } = await sb
+      .from('budget_log')
+      .select('cost_usd,model_or_tier')
+      .eq('episode_id', episodeId);
+    const { direct } = splitLedger((ledger ?? []) as LedgerRow[]);
+    if (direct >= ceiling) {
+      throw new Error(
+        `${data.episode_code}: потолок исчерпан — ПРЯМЫХ трат $${direct.toFixed(2)} из ` +
+          `$${ceiling.toFixed(2)}. Поднять потолок может только Директор (Episode Settings).`,
+      );
+    }
   }
 }
 

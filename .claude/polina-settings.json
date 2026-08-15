@@ -1,14 +1,7 @@
 {
   "_comment": "Хуки Полины. Пути АБСОЛЮТНЫЕ: $CLAUDE_PROJECT_DIR/%VAR% в hook-командах на Windows не разворачиваются (проверено смоуком Ш54 и живым отказом гейта 09.08). Файл подаётся мостом явно: --settings C:/SandyStudio-polina/.claude/polina-settings.json — на сессии Тео не действует.",
+  "_pretool_removed": "PreToolUse снят 13.08 (Директор): «Полина — ум как и ты, не доверять ей в техническом смысле нонсенс». Хук резал publish.ts всегда (включая --help), git push/merge и дублировал денежный гейт. Деньги считает и лимиты держит КОД, одинаковый для обеих рук — assertEpisodeReadyToSpend в scripts/run/_asset.ts, потолок перенесён туда же. Решение при наличии данных и доклад Директору — дело ассистента, не решётки.",
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash|PowerShell",
-        "hooks": [
-          { "type": "command", "command": "node \"C:/SandyStudio-polina/.claude/hooks/polina-pretool.cjs\"" }
-        ]
-      }
-    ],
     "Stop": [
       {
         "hooks": [
