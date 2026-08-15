@@ -115,8 +115,11 @@ node --env-file=.env.local --import tsx scripts/hog-channels.mts   # видит 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\Alexander\sandystudio\webapp\scripts\hog-daily.ps1"
 ```
-Успех = в `docs/distribution/reports/<сегодня>/<KEY>/` лежат `report.html` + `summary.md`,
-в логе есть `GIST OK` и `DELIVERY OK`, на телефон пришёл текст со ссылкой.
+Успех = в `FILMS/_distribution/reports/<сегодня>/<KEY>/` лежат `report.html` + `summary.md`
+(переехало 15.08 из `docs/`, чтобы отчёты не множились по веткам; путь переопределяется
+`$env:DIST_REPORTS_DIR`), в логе есть `GIST OK` и `DELIVERY OK`, на телефон пришёл текст
+со ссылкой. Снимки при этом ложатся в `docs/distribution/snapshots/` и коммитятся —
+там поля, которых в БД нет: показы, CTR, средний процент досмотра.
 
 ## Локальный стек (если нужен)
 `start-stack.ps1` поднимает app + self-hosted Inngest. Ключи берёт из `webapp/.env.local`.
