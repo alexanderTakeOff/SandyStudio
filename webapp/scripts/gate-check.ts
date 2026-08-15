@@ -111,7 +111,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.error(`gate-check: неизвестный --kind «${kind}» (spend | context)`);
+  console.error(`gate-check: неизвестный --kind «${kind}» (context)`);
   process.exit(2);
 }
 
