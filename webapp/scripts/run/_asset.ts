@@ -416,7 +416,7 @@ export async function episodeCode(episodeId: string): Promise<string> {
 // становится частью ТОГО ЖЕ движения, а не отдельным шагом, который забудут.
 // Именно потому, что шаг был отдельным, три эпизода подряд остались невидимыми.
 
-export type MediaKind = 'frame' | 'clip' | 'cut' | 'music';
+export type MediaKind = 'frame' | 'clip' | 'cut' | 'music' | 'thumb';
 
 /** Тип-префикс — единственное, что связывает изделие со стадией конвейера. */
 const MEDIA_AGENT: Readonly<Record<MediaKind, { kindTag: string; agent: string }>> = {
@@ -424,6 +424,11 @@ const MEDIA_AGENT: Readonly<Record<MediaKind, { kindTag: string; agent: string }
   clip: { kindTag: 'VID', agent: 'EXEC-VGEN' },
   cut: { kindTag: 'VID', agent: 'EXEC-STITCH' },
   music: { kindTag: 'AUD', agent: 'EXEC-MGEN' },
+  // 2026-08-16: у станции Key Art Artist рук не было вовсе — обложку сгенерировать
+  // можно было, а завести в студию нечем. `publish.ts:143` ищет ровно APPROVED
+  // `IMG-thumbnail`, не находил и печатал «обложки нет»: работа станции до канала
+  // не доезжала так же, как упаковка до правки 13.08.
+  thumb: { kindTag: 'IMG', agent: 'EXEC-THUMB' },
 };
 
 /** `SS-S15-E36` + `sh01` → `S15-E36-SH01` — канонический id кадра by-position. */
@@ -531,8 +536,13 @@ export async function registerEpisodeMedia(a: RegisterMediaArgs): Promise<Persis
     kind === 'frame' ? `IMG-episode_ref_${stem.replace(/-/g, '_')}_${shot}`
     : kind === 'clip' ? `VID-shot-${stem}-${shot}`
     : kind === 'cut' ? 'VID-final_cut'
+    : kind === 'thumb' ? 'IMG-thumbnail'
     : 'AUD-music-main';
-  const slug = perShot ? `shot_${shot}` : kind === 'cut' ? 'final_cut' : 'music_main';
+  const slug = perShot
+    ? `shot_${shot}`
+    : kind === 'cut' ? 'final_cut'
+    : kind === 'thumb' ? 'thumbnail'
+    : 'music_main';
 
   // R1/R2: версия = max по (episode, file_type) + 1 — паттерн эталона
   // (`episode-references.ts:2200`). Имя файла выводится ИЗ версии (R3), поэтому

@@ -16,9 +16,9 @@ export default defineTool(
     name: 'register-media',
     summary: 'Заводит кадр, клип, кат или музыку эпизода в студию — с типом и метаданными, которые читает лента.',
     args: {
-      file: { about: 'исходный файл — PNG для кадра, MP4 для клипа и ката, аудио для музыки' },
-      kind: { about: 'что заводим', values: ['frame', 'clip', 'cut', 'music'] },
-      shot: { about: 'номер кадра, `sh01`; для `cut` и `music` не нужен', default: '' },
+      file: { about: 'исходный файл — PNG для кадра и обложки, MP4 для клипа и ката, аудио для музыки' },
+      kind: { about: 'что заводим', values: ['frame', 'clip', 'cut', 'music', 'thumb'] },
+      shot: { about: 'номер кадра, `sh01`; для `cut`, `music` и `thumb` не нужен', default: '' },
       // Ф1: версия ВЫЧИСЛЯЕТСЯ (max+1 по file_type) — заданная руками версия
       // затирала историю (D88). Статус рождения — REVIEW: изделие предъявляется.
       status: { about: 'статус ассета', default: 'REVIEW', values: ['DRAFT', 'REVIEW', 'APPROVED'] },
@@ -30,7 +30,7 @@ export default defineTool(
     // Ручной след для готового изделия — кадр, клип, кат, музыка. Генераторы
     // оставляют его сами; этот нужен, когда файл произведён иначе (в т.ч. музыка,
     // залитая Директором).
-    stations: ['episode_references', 'visual_generator', 'final_cut', 'music_generator'],
+    stations: ['episode_references', 'visual_generator', 'final_cut', 'music_generator', 'thumbnail_creator'],
   },
   async ({ arg, env }) => {
     const res = await registerEpisodeMedia({
