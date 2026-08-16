@@ -55,12 +55,17 @@ const TURN_TIMEOUT_MS = Number(process.env.MIND_BRIDGE_TURN_TIMEOUT_MS ?? 45 * 6
  * изделиях, — и единственным лечением казался перезапуск сессии с потерей 439k
  * рабочей памяти.
  *
- * Гейт денег и хард-лимиты от этого НЕ слабеют: `polina-pretool.cjs` ловит
- * `matcher: "Bash"`, поэтому платные генерации и `git push master` через вторую
- * руку надо закрыть тем же хуком (matcher `Bash|PowerShell`) — правка идёт в
- * `polina-settings.json` в этом же коммите.
+ * Гейт денег держит КОД инструмента (`assertEpisodeReadyToSpend`), одинаковый для
+ * обеих рук, — а не хук над одной. PreToolUse снят 14.08.
+ *
+ * ГЛАЗА (16.08). `WebSearch`/`WebFetch` не были в списке, и ум упирался в стену,
+ * которую словом не снять: «разрешение выдаётся не репликой в треде, а правами
+ * сессии». Требования площадки к обложке нечем было прочитать — а гадать про
+ * чужой формат дороже, чем посмотреть. Тот же класс, что отсутствие PowerShell:
+ * список рук молчаливо решает, что уму МОЖНО УЗНАТЬ.
  */
-const ALLOWED_TOOLS = 'Bash,PowerShell,Read,Glob,Grep,Write,Edit,Agent,Task,Skill,TodoWrite';
+const ALLOWED_TOOLS =
+  'Bash,PowerShell,Read,Glob,Grep,Write,Edit,Agent,Task,Skill,TodoWrite,WebSearch,WebFetch';
 
 /** Ходы в полёте — ПО ТРЕДУ. In-memory + зеркало в concierge_threads.mind_session. */
 const inFlight = new Map<string, ChildProcessWithoutNullStreams>();
