@@ -1,12 +1,21 @@
-// Direct-call shot renderer for the clean run: pads the reference frame to a true
-// 9:16 with its own wall colour, then submits image-to-video to Seedance.
+// Direct-call shot renderer for the clean run: pads the reference frame to the
+// episode's render aspect with its own edge colour, then submits image-to-video
+// to Seedance.
 //
 // WHY THE PAD (seedance-prompting rule 6): the render aspect and the reference
-// aspect MUST match. Our frames come out 1024×1536 (2:3) because `clampSize()`
-// pins the three legacy gpt-image-1 sizes (D39), while delivery is 9:16. Feeding
-// a 2:3 still into a 9:16 render makes Seedance crop and recompose — content loss
-// plus identity drift. Padding costs $0 and happens in ffmpeg: the top of every
-// frame in this episode is bare wall, so extending it is invisible.
+// aspect MUST match. Our frames come out of `clampSize()` in one of the three
+// legacy gpt-image-1 sizes (D39) — 1024×1536 or 1536×1024 — and neither is 9:16
+// or 16:9. Feeding a mismatched still into the render makes Seedance crop and
+// recompose — content loss plus identity drift. Padding costs $0 and happens in
+// ffmpeg.
+//
+// WHY IT IS COMPUTED AND NOT CONSTANT (E08, 21.08): the pad used to be three
+// hardcoded numbers for one vertical episode, so every landscape episode died at
+// ffmpeg with «padded dimensions cannot be smaller than input dimensions» — the
+// aspect was already read from episode settings for the provider call, but the
+// frame prep still assumed 9:16. The law is «the reference aspect must MATCH the
+// render aspect», not «the reference must be 9:16»; the target is now derived
+// from the frame's real size and the resolved aspect.
 //
 // Contract: `--help`.
 import { execFileSync } from 'node:child_process';
@@ -20,8 +29,8 @@ import { extractShotsFromStoryboard } from '../../lib/api/animatic-shotlist';
 import { readEpisodeVideoConfig } from '../../lib/agents/runner';
 import { resolveVideoParams } from '../../lib/api/resolve-generation-params';
 
-/** Sample one pixel well inside the wall area and return it as ffmpeg 0xRRGGBB. */
-function wallColour(src: string): string {
+/** Sample one pixel just inside the frame edge and return it as ffmpeg 0xRRGGBB. */
+function edgeColour(src: string): string {
   const raw = execFileSync(
     'ffmpeg',
     ['-v', 'error', '-i', src, '-vf', 'crop=1:1:8:8', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'],
@@ -30,22 +39,66 @@ function wallColour(src: string): string {
   return `0x${raw.subarray(0, 3).toString('hex')}`;
 }
 
-/** Pad a 1024×1536 frame up to 1024×1820 (9:16) by extending the bare wall on top. */
-function padTo916(src: string, dst: string): void {
-  const colour = wallColour(src);
+/** Real pixel size of an image. Guessing it is how the hardcoded pad happened. */
+function frameSize(src: string): { w: number; h: number } {
+  const out = execFileSync(
+    'ffprobe',
+    ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height',
+     '-of', 'csv=p=0:s=x', src],
+    { maxBuffer: 1024 },
+  ).toString().trim();
+  const [w, h] = out.split('x').map(Number);
+  if (!w || !h) throw new Error(`ffprobe не прочитал размер кадра ${src}: "${out}"`);
+  return { w, h };
+}
+
+const even = (n: number): number => (n % 2 === 0 ? n : n + 1);
+
+/**
+ * Дотянуть кадр до аспекта рендера, доливая недостающее его же краевым цветом.
+ * Добор идёт по ОДНОЙ оси — по той, которой не хватает:
+ *   · кадр уже целевого — растёт ширина, симметрично с двух сторон;
+ *   · кадр шире целевого — растёт высота, СВЕРХУ: низ кадра может нести пол или
+ *     опору, верх в наших сценах пустой. Так же вело себя прежнее зашитое
+ *     `pad=1024:1820:0:284`, и на вертикальном кадре 1024×1536 результат тот же
+ *     до пикселя — правка не меняет уже снятые эпизоды.
+ */
+function padToAspect(src: string, dst: string, aspect: string): void {
+  const [aw, ah] = aspect.split(':').map(Number);
+  if (!aw || !ah) throw new Error(`не разобрал аспект рендера: "${aspect}"`);
+  const { w, h } = frameSize(src);
+  const target = aw / ah;
+
+  let W = w;
+  let H = h;
+  let x = 0;
+  let y = 0;
+  if (w / h < target) {
+    W = even(Math.round(h * target));
+    x = Math.floor((W - w) / 2);
+  } else if (w / h > target) {
+    H = even(Math.round(w / target));
+    y = H - h;
+  }
+
   execFileSync('ffmpeg', [
     '-v', 'error', '-y', '-i', src,
-    '-vf', `pad=1024:1820:0:284:color=${colour}`,
+    '-vf', `pad=${W}:${H}:${x}:${y}:color=${edgeColour(src)}`,
     dst,
   ]);
+  console.log(`pad ${w}×${h} → ${W}×${H} (${aspect}), смещение ${x},${y}`);
 }
 
 export default defineTool(
   {
     name: 'gen-video',
-    summary: 'Один клип из кадра: пад до 9:16 своим цветом стены, затем image-to-video на Seedance.',
+    summary:
+      'Один клип из кадра: пад до аспекта эпизода своим краевым цветом, затем ' +
+      'image-to-video на Seedance.',
     args: {
-      frame: { about: 'исходный кадр PNG; падится до 9:16 рядом с собой' },
+      frame: {
+        about: 'исходный кадр PNG; рядом с собой падится до аспекта рендера из настроек эпизода',
+      },
       'prompt-file': { about: 'файл с видео-промптом кадра' },
       out: { about: 'куда положить MP4; директории создаются' },
       shot: {
@@ -152,8 +205,8 @@ export default defineTool(
 
     const srcAbs = resolve(process.cwd(), arg('frame'));
     if (!existsSync(srcAbs)) throw new Error(`frame not found: ${srcAbs}`);
-    const paddedAbs = srcAbs.replace(/\.png$/, '.916.png');
-    padTo916(srcAbs, paddedAbs);
+    const paddedAbs = srcAbs.replace(/\.png$/, '.padded.png');
+    padToAspect(srcAbs, paddedAbs, effectiveAspect);
     console.log(`padded → ${paddedAbs}`);
 
     const prompt = readFileSync(resolve(process.cwd(), arg('prompt-file')), 'utf8').trim();
