@@ -201,8 +201,11 @@ export const PATCH = withApiHandler(async (req, ctx) => {
 /**
  * DELETE — Director-driven asset deletion for non-canonical drafts.
  *
- * Allowed for: DRAFT, REVIEW, REVISION, REJECTED.
  * Blocked for: APPROVED, LOCKED (terminal canon — protected from accidental loss).
+ * Everything else (DRAFT / REVIEW / REVISION / REJECTED / INVALIDATED /
+ * NEEDS_HUMAN_TWEAK / TEST) is deletable — the law is a BLACKLIST, same as the
+ * UI in AssetCard. A whitelist here silently fell behind the enum (2026-08-20:
+ * INVALIDATED could not be deleted although the UI offered Delete).
  *
  * Director requirement 2026-05-12: "Давай сделаем чтобы я мог удалять как
  * минимум драфты без всяких ограничений иначе уже куча мусора".
@@ -210,9 +213,7 @@ export const PATCH = withApiHandler(async (req, ctx) => {
  * Physical row delete. Drive files (if any) become orphans — recoverable from
  * Drive trash for 30 days. Drive cleanup automation deferred.
  */
-const DELETABLE_STATUSES: ReadonlySet<string> = new Set([
-  'DRAFT', 'REVIEW', 'REVISION', 'REJECTED',
-]);
+const PROTECTED_STATUSES: ReadonlySet<string> = new Set(['APPROVED', 'LOCKED']);
 
 export const DELETE = withApiHandler(async (_req, ctx) => {
   const params = (await ctx?.params) as { id: string } | undefined;
@@ -229,9 +230,9 @@ export const DELETE = withApiHandler(async (_req, ctx) => {
   if (fetchErr) throw new Error(`asset fetch failed: ${fetchErr.message}`);
   if (!asset) throw new NotFoundError(`Asset ${id}`);
 
-  if (!DELETABLE_STATUSES.has(asset.status as string)) {
+  if (PROTECTED_STATUSES.has(asset.status as string)) {
     throw new ValidationError(
-      `Cannot delete asset in status "${asset.status}". Only DRAFT / REVIEW / REVISION / REJECTED may be deleted; APPROVED and LOCKED are protected. To remove a LOCKED canon asset, use the soft-archive cleanup script.`,
+      `Cannot delete asset in status "${asset.status}": APPROVED and LOCKED are protected. To remove a LOCKED canon asset, use the soft-archive cleanup script.`,
     );
   }
 

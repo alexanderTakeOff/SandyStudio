@@ -36,10 +36,16 @@ import {
 
 const STATE_FILE = resolve(process.cwd(), '..', 'FILMS', '_run', 'telegram-bot-state.json');
 const POLL_STUDIO_MS = 3_000;
+/** Пульт идёт за словом Директора; пока слова не было — идти некуда. */
+const NO_PLACE = 'Директор ещё нигде не говорил — напиши в панели или /e SS-S20-E08';
 
 interface BotState {
-  /** Эпизод, в разговор которого уходят реплики. Меняется командой `/e`. */
-  episodeId: string | null;
+  /**
+   * Сущность (эпизод или сериал), за которой пульт шёл в прошлый раз — только чтобы
+   * заметить переход и сказать о нём. Своего «выбранного эпизода» у пульта НЕТ:
+   * он идёт за словом Директора (см. `followedEntity`).
+   */
+  followKey: string | null;
   lastUpdateId: number;
   /** Метка последней доставленной реплики и последнего доставленного изделия. */
   lastTurnAt: string;
@@ -47,11 +53,17 @@ interface BotState {
 }
 
 function loadState(): BotState {
+  const nowIso = new Date().toISOString();
   try {
-    return JSON.parse(readFileSync(STATE_FILE, 'utf8')) as BotState;
+    const raw = JSON.parse(readFileSync(STATE_FILE, 'utf8')) as Partial<BotState>;
+    return {
+      followKey: raw.followKey ?? null,
+      lastUpdateId: raw.lastUpdateId ?? 0,
+      lastTurnAt: raw.lastTurnAt ?? nowIso,
+      lastAssetAt: raw.lastAssetAt ?? nowIso,
+    };
   } catch {
-    const nowIso = new Date().toISOString();
-    return { episodeId: null, lastUpdateId: 0, lastTurnAt: nowIso, lastAssetAt: nowIso };
+    return { followKey: null, lastUpdateId: 0, lastTurnAt: nowIso, lastAssetAt: nowIso };
   }
 }
 
@@ -73,24 +85,71 @@ function allowedChats(): number[] {
 
 // ─────────────────────────── студия ───────────────────────────
 
-async function currentThreadId(state: BotState): Promise<string | null> {
-  if (!state.episodeId) return null;
-  const { data: ep } = await sb
-    .from('episodes')
-    .select('series_id,episode_code')
-    .eq('id', state.episodeId)
+interface Followed {
+  episodeId: string | null;
+  seriesId: string | null;
+  /** Что показать человеку: `SS-S20-E08` или код сериала. */
+  code: string;
+}
+
+/**
+ * Пульт идёт за СЛОВОМ Директора: сущность (эпизод/сериал) треда его последней
+ * реплики — откуда бы она ни была сказана (панель, `mind-say`, сам пульт).
+ * 21.08: у пульта был свой приколоченный эпизод (E07), а панель жила в E08 —
+ * два входа расходились по двум разговорам, и Полина «видела только 07».
+ * Один закон вместо двух списков: где Директор говорил последним, там и пульт.
+ * При переходе пульт говорит об этом в чат и обнуляет метку изделий, чтобы не
+ * вывалить в карман всю историю нового эпизода.
+ */
+async function followedEntity(state: BotState, chatId?: number): Promise<Followed | null> {
+  const { data: last } = await sb
+    .from('concierge_turns')
+    .select('thread_id')
+    .eq('role', 'director')
+    .eq('event_type', 'message')
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
-  if (!ep) return null;
-  const found = await resolveOpenThreadId(sb as never, {
-    episodeId: state.episodeId,
-    seriesId: (ep as { series_id: string }).series_id,
-  });
+  const threadId = (last as { thread_id?: string } | null)?.thread_id;
+  if (!threadId) return null;
+
+  const { data: th } = await sb
+    .from('concierge_threads')
+    .select('episode_id,series_id')
+    .eq('id', threadId)
+    .maybeSingle();
+  const t = th as { episode_id: string | null; series_id: string | null } | null;
+  if (!t || (!t.episode_id && !t.series_id)) return null;
+
+  let code = '?';
+  if (t.episode_id) {
+    const { data: ep } = await sb.from('episodes').select('episode_code').eq('id', t.episode_id).maybeSingle();
+    code = (ep as { episode_code?: string } | null)?.episode_code ?? code;
+  } else if (t.series_id) {
+    const { data: s } = await sb.from('series').select('code').eq('id', t.series_id).maybeSingle();
+    code = (s as { code?: string } | null)?.code ?? code;
+  }
+
+  const key = t.episode_id ?? t.series_id;
+  if (state.followKey !== key) {
+    state.followKey = key;
+    state.lastAssetAt = new Date().toISOString();
+    saveState(state);
+    if (chatId) await sendMessage(chatId, `Теперь ${code}`).catch(() => {});
+  }
+  return { episodeId: t.episode_id, seriesId: t.series_id, code };
+}
+
+async function currentThreadId(state: BotState, chatId?: number): Promise<string | null> {
+  const f = await followedEntity(state, chatId);
+  if (!f) return null;
+  const found = await resolveOpenThreadId(sb as never, { episodeId: f.episodeId, seriesId: f.seriesId });
   if (found) return found;
   const thread = await createThread(sb as never, {
-    episodeId: state.episodeId,
-    seriesId: (ep as { series_id: string }).series_id,
+    episodeId: f.episodeId,
+    seriesId: f.seriesId,
     activeMode: '3',
-    title: `telegram ${(ep as { episode_code: string }).episode_code}`,
+    title: `telegram ${f.code}`,
   });
   return thread.id;
 }
@@ -169,8 +228,8 @@ function fileRefOf(msg: TgMessage): { fileId: string; name: string } | null {
 async function handleIncomingMedia(state: BotState, msg: TgMessage, chatId: number): Promise<void> {
   const ref = fileRefOf(msg);
   if (!ref) return;
-  if (!state.episodeId) {
-    await sendMessage(chatId, 'Сначала выбери эпизод: /e SS-S20-E07');
+  if (!(await followedEntity(state, chatId))) {
+    await sendMessage(chatId, NO_PLACE);
     return;
   }
 
@@ -196,14 +255,14 @@ async function handleIncomingMedia(state: BotState, msg: TgMessage, chatId: numb
   );
   await sendMessage(
     chatId,
-    said ? 'Принял, отдал Полине — посмотрит и оформит.' : 'Эпизод не выбран: /e SS-S20-E07',
+    said ? 'Принял, отдал Полине — посмотрит и оформит.' : NO_PLACE,
   );
 }
 
 // ─────────────────── студия → телеграм ───────────────────
 
 async function pumpStudio(state: BotState, chatId: number): Promise<void> {
-  const threadId = await currentThreadId(state);
+  const threadId = await currentThreadId(state, chatId);
   if (!threadId) return;
 
   const { data: turns } = await sb
@@ -225,11 +284,12 @@ async function pumpStudio(state: BotState, chatId: number): Promise<void> {
   }
 
   // Изделия эпизода — приходят сами, как только станция их предъявила.
-  if (!state.episodeId) return;
+  const episodeId = (await followedEntity(state, chatId))?.episodeId;
+  if (!episodeId) return;
   const { data: assets } = await sb
     .from('assets')
     .select('id,filename,file_type,status,drive_file_id,created_at')
-    .eq('episode_id', state.episodeId)
+    .eq('episode_id', episodeId)
     .gt('created_at', state.lastAssetAt)
     .order('created_at', { ascending: true })
     .limit(10);
@@ -253,7 +313,7 @@ async function pumpStudio(state: BotState, chatId: number): Promise<void> {
 const HELP = [
   'Пульт студии.',
   '',
-  '/e SS-S20-E07 — выбрать эпизод (можно просто E07)',
+  '/e SS-S20-E08 — перевести пульт на эпизод (можно просто E08). Сам он идёт за твоим последним словом — где написал в панели, там и пульт.',
   '/что — где мы сейчас',
   '/стоп — оборвать залипший ход',
   '',
@@ -273,22 +333,34 @@ async function handleCommand(state: BotState, chatId: number, text: string): Pro
       return true;
     case '/e':
     case '/эпизод': {
-      if (!arg) return await sendMessage(chatId, 'Какой эпизод? Напр. /e SS-S20-E07').then(() => true);
+      if (!arg) return await sendMessage(chatId, 'Какой эпизод? Напр. /e SS-S20-E08').then(() => true);
       const ep = await episodeByCode(arg);
       if (!ep) return await sendMessage(chatId, `Эпизода «${arg}» не нашёл.`).then(() => true);
-      state.episodeId = ep.id;
-      state.lastAssetAt = new Date().toISOString();
-      saveState(state);
+      // Переход — это тоже слово Директора: строка в тред эпизода (без `for_bridge`,
+      // ход не нужен), и закон «иди за последним словом» переводит пульт сам.
+      const { data: epRow } = await sb.from('episodes').select('series_id').eq('id', ep.id).maybeSingle();
+      const seriesId = (epRow as { series_id?: string } | null)?.series_id ?? null;
+      const threadId =
+        (await resolveOpenThreadId(sb as never, { episodeId: ep.id, seriesId })) ??
+        (await createThread(sb as never, { episodeId: ep.id, seriesId, activeMode: '3', title: `telegram ${ep.episode_code}` })).id;
+      await persistTurn(sb as never, threadId, {
+        role: 'director',
+        event_type: 'message',
+        content: `(пульт переведён на ${ep.episode_code})`,
+        metadata: { source: 'telegram', switch: true },
+      });
+      await followedEntity(state);
       await sendMessage(chatId, `Работаем с ${ep.episode_code} · статус ${ep.status}\n${ep.id}`);
       return true;
     }
     case '/что':
     case '/status': {
-      if (!state.episodeId) return await sendMessage(chatId, 'Эпизод не выбран: /e SS-S20-E07').then(() => true);
+      const f = await followedEntity(state, chatId);
+      if (!f?.episodeId) return await sendMessage(chatId, f ? `${f.code} · сериал, эпизод не выбран` : NO_PLACE).then(() => true);
       const { data: ep } = await sb
         .from('episodes')
         .select('episode_code,status')
-        .eq('id', state.episodeId)
+        .eq('id', f.episodeId)
         .maybeSingle();
       const threadId = await currentThreadId(state);
       const { data: thread } = threadId
@@ -305,7 +377,7 @@ async function handleCommand(state: BotState, chatId: number, text: string): Pro
     case '/стоп':
     case '/stop': {
       const ok = await sayToMind(state, '(отмена хода)', { cancel: true });
-      await sendMessage(chatId, ok ? 'Отмена отправлена — мост убьёт ход.' : 'Эпизод не выбран.');
+      await sendMessage(chatId, ok ? 'Отмена отправлена — мост убьёт ход.' : NO_PLACE);
       return true;
     }
     default:
@@ -326,7 +398,7 @@ async function handleUpdate(state: BotState, u: TgUpdate): Promise<void> {
     const code = (q.data ?? '').trim();
     await answerCallback(q.id, code);
     const ok = await sayToMind(state, code, { via: 'button' });
-    await sendMessage(chatId, ok ? `→ ${code}` : 'Эпизод не выбран: /e SS-S20-E07');
+    await sendMessage(chatId, ok ? `→ ${code}` : NO_PLACE);
     return;
   }
 
@@ -353,7 +425,7 @@ async function handleUpdate(state: BotState, u: TgUpdate): Promise<void> {
   if (text.startsWith('/') && (await handleCommand(state, chatId, text))) return;
 
   const ok = await sayToMind(state, text);
-  if (!ok) await sendMessage(chatId, 'Эпизод не выбран: /e SS-S20-E07');
+  if (!ok) await sendMessage(chatId, NO_PLACE);
 }
 
 // ─────────────────────────── циклы ───────────────────────────
@@ -361,16 +433,13 @@ async function handleUpdate(state: BotState, u: TgUpdate): Promise<void> {
 async function main(): Promise<void> {
   const me = await getMe();
   const state = loadState();
-  console.log(`пульт поднят: @${me.username} · эпизод ${state.episodeId ?? 'не выбран'}`);
+  const where = (await followedEntity(state))?.code ?? 'Директор ещё нигде не говорил';
+  console.log(`пульт поднят: @${me.username} · ${where}`);
   const chats = allowedChats();
   if (chats.length === 0) {
     console.log('TELEGRAM_ALLOWED_CHAT_IDS пуст — бот сообщит chat_id первому написавшему и хода не даст');
   } else {
     // Рестарт стека виден в кармане: молчащий пульт неотличим от упавшего.
-    const { data: ep } = state.episodeId
-      ? await sb.from('episodes').select('episode_code').eq('id', state.episodeId).maybeSingle()
-      : { data: null };
-    const where = (ep as { episode_code?: string } | null)?.episode_code ?? 'эпизод не выбран';
     await sendMessage(chats[0], `Пульт на связи · ${where}\n/help — что умею`).catch(() => {});
   }
 
