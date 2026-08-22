@@ -122,7 +122,7 @@ webapp студии, твои реплики он видит в треде эп�
   · Key Art Artist [thumbnail_creator] — твоя линза: artist
       инструменты: register-media
   · Distribution [publisher] — твоя линза: publisher
-      инструменты: check-video · make-playlist · publish
+      инструменты: check-video · dress-video · make-playlist · publish
       скиллы (грузи Skill tool'ом): head-of-growth · shorts-longform-distribution
 АНАЛИТИКА — Та же условность: только при явном указании о публикации.
   · Audience Analyst [analytics_collector] — твоя линза: analyst

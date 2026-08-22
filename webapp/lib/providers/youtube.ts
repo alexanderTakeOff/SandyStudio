@@ -145,6 +145,70 @@ export async function setThumbnail(videoId: string, bytes: Uint8Array, contentTy
   }
 }
 
+/** Что площадка ХРАНИТ о видео: статус, заголовок и адреса миниатюр. Читается
+ *  вместо веры в код заливки — обложка «поставлена» доказывается адресом, по
+ *  которому её видно, а не строкой «обложка поставлена» в чужом логе. */
+export async function getVideoDetails(
+  videoId: string,
+  auth?: YouTubeAuth,
+): Promise<{
+  title: string;
+  privacyStatus: string;
+  uploadStatus: string;
+  madeForKids: boolean;
+  thumbnails: Record<string, { url?: string; width?: number; height?: number }>;
+}> {
+  const res = await authedFetch(
+    `${YT_API}/videos?part=snippet,status&id=${encodeURIComponent(videoId)}`,
+    {},
+    CALL_TIMEOUT_MS,
+    auth,
+  );
+  if (!res.ok) {
+    throw new YouTubeError(`getVideoDetails failed (${res.status})`, res.status, (await res.text()).slice(0, 400));
+  }
+  const json = (await res.json()) as { items?: Array<{ snippet?: any; status?: any }> };
+  const item = json.items?.[0];
+  // Пустой ответ — ОТКАЗ, а не заметка: чужой id иначе читается как чистая проверка.
+  if (!item) throw new YouTubeError(`no such video for this channel: ${videoId}`);
+  return {
+    title: item.snippet?.title ?? '',
+    privacyStatus: item.status?.privacyStatus ?? '',
+    uploadStatus: item.status?.uploadStatus ?? '',
+    madeForKids: Boolean(item.status?.madeForKids),
+    thumbnails: item.snippet?.thumbnails ?? {},
+  };
+}
+
+/** Сменить видимость УЖЕ залитого видео (videos.update part=status).
+ *
+ *  `videos.update` ЗАМЕЩАЕТ переданную часть целиком, поэтому соседние поля
+ *  статуса (аудитория, лицензия, встраивание) читаются и отправляются обратно —
+ *  иначе смена приватности молча сбросила бы отметку «не для детей». */
+export async function setVideoPrivacy(
+  videoId: string,
+  privacyStatus: PrivacyStatus,
+  auth?: YouTubeAuth,
+): Promise<void> {
+  const current = await getVideoDetails(videoId, auth);
+  const res = await authedFetch(
+    `${YT_API}/videos?part=status`,
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: videoId,
+        status: { privacyStatus, selfDeclaredMadeForKids: current.madeForKids },
+      }),
+    },
+    CALL_TIMEOUT_MS,
+    auth,
+  );
+  if (!res.ok) {
+    throw new YouTubeError(`setVideoPrivacy failed (${res.status})`, res.status, (await res.text()).slice(0, 400));
+  }
+}
+
 /** Update title/description/tags on an EXISTING video (videos.update). Requires
  *  the youtube.force-ssl scope. videos.update replaces the snippet, so title +
  *  categoryId are mandatory; we always send description + tags too. */

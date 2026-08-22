@@ -24,7 +24,7 @@ import {
 import { resolveSeriesPlaylistId } from '../../lib/providers/short-linkage';
 import { resolveChannelRefreshToken } from '../../lib/providers/google-auth';
 import { assertPublishable, extractRawMetadata } from '../../lib/publish-metadata';
-import { ensureCachedMedia } from '../../lib/media-cache';
+import { approvedThumbnailBytes } from '../../lib/publish-dress';
 
 /** Свежайшее утверждённое изделие эпизода данного типа. */
 async function latestApproved(episodeId: string, fileType: string) {
@@ -140,20 +140,18 @@ export default defineTool(
 
     // Обложка и плейлист — best-effort, как у EXEC-PUB: их отказ не отменяет
     // публикацию, но обязан быть НАПЕЧАТАН, а не проглочен.
-    const thumbAsset = await latestApproved(episodeId, 'IMG-thumbnail');
-    if (thumbAsset?.filename) {
-      try {
-        const abs = await ensureCachedMedia({
-          filename: thumbAsset.filename,
-          driveFileId: thumbAsset.drive_file_id ?? '',
-        });
-        await setThumbnail(res.id, readFileSync(abs), 'image/png', ytAuth);
-        console.log(`обложка поставлена: ${thumbAsset.filename}`);
-      } catch (e) {
-        console.error(`обложка НЕ поставлена: ${e instanceof Error ? e.message : e}`);
+    try {
+      const thumb = await approvedThumbnailBytes(sb as never, episodeId);
+      if (thumb) {
+        await setThumbnail(res.id, thumb.bytes, thumb.contentType, ytAuth);
+        console.log(`обложка поставлена: ${thumb.filename}`);
+      } else {
+        console.log('обложки нет (APPROVED IMG-thumbnail не найден) — видео уйдёт с кадром из ролика');
       }
-    } else {
-      console.log('обложки нет (APPROVED IMG-thumbnail не найден) — видео уйдёт с кадром из ролика');
+    } catch (e) {
+      // Отказ обложки не отменяет публикацию, но чинится потом одним движением:
+      // `npx tsx scripts/run/dress-video.ts` — без перезаливки видео.
+      console.error(`обложка НЕ поставлена: ${e instanceof Error ? e.message : e} · почини: dress-video`);
     }
 
     try {
