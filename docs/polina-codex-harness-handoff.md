@@ -1,6 +1,6 @@
 # Polina dual subscription harness — handoff to Claude Code
 
-**Created:** 2026-08-24 · **From:** Theo / Codex · **To:** local Claude Code session  
+**Created:** 2026-08-24 · **From:** Theo / Codex · **To:** local Claude Code session
 **Director authority:** review both harness paths, merge what belongs to the Assistant line,
 prove neither Claude Code nor Codex regressed, then report before the Mega Assistant port.
 
@@ -134,4 +134,3 @@ FINAL REPORT — addressed to DIRECTOR:
 - Main feature branch: https://github.com/alexanderTakeOff/SandyStudio/tree/codex/polina-second-harness
 - Polina runtime hooks: https://github.com/alexanderTakeOff/SandyStudio/tree/codex/polina-runtime-hooks
 - Base branch: https://github.com/alexanderTakeOff/SandyStudio/tree/paradigm/direct-mind
-
