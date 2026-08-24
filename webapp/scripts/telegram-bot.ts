@@ -22,6 +22,7 @@ import { sb } from './run/_env';
 import { createThread, persistTurn, resolveOpenThreadId } from '../lib/concierge/threads';
 import { ensureCachedMedia } from '../lib/media-cache';
 import { keyboardForText } from '../lib/telegram/questions';
+import { firstCommandArgument } from '../lib/telegram/commands';
 import {
   getConciergeProviderOverride,
   setConciergeProviderOverride,
@@ -454,9 +455,10 @@ async function handleCommand(state: BotState, chatId: number, text: string): Pro
       return true;
     case '/e':
     case '/эпизод': {
-      if (!arg) return await sendMessage(chatId, 'Какой эпизод? Напр. /e SS-S20-E08').then(() => true);
-      const ep = await episodeByCode(arg);
-      if (!ep) return await sendMessage(chatId, `Эпизода «${arg}» не нашёл.`).then(() => true);
+      const episodeArg = firstCommandArgument(text);
+      if (!episodeArg) return await sendMessage(chatId, 'Какой эпизод? Напр. /e SS-S20-E08').then(() => true);
+      const ep = await episodeByCode(episodeArg);
+      if (!ep) return await sendMessage(chatId, `Эпизода «${episodeArg}» не нашёл.`).then(() => true);
       // Переход — это тоже слово Директора: строка в тред эпизода (без `for_bridge`,
       // ход не нужен), и закон «иди за последним словом» переводит пульт сам.
       const { data: epRow } = await sb.from('episodes').select('series_id').eq('id', ep.id).maybeSingle();
