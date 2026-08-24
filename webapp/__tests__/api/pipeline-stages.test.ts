@@ -591,10 +591,12 @@ describe('buildPipelineSnapshot — строка канона серии', () =>
     expect(row.progress).toEqual({ done: 2, total: 5 });
   });
 
-  it('строка объявлена ВВОДОМ уровня сериала, а не работой агента', () => {
+  it('строка объявлена РАБОТОЙ Полины уровня сериала (слово Директора 24.08), гейт — его', () => {
+    // До 24.08 канон был ВХОДОМ Директора («просишь и ждёшь»); на S22 он сменил
+    // закон: недостающие плиты создаёт Полина на касте, Директор утверждает.
     const row = canonRow();
-    expect(row.role).toBe('input');
+    expect(row.role).toBe('author');
     expect(row.phase).toBe('pre-production');
-    expect(row.agents).toEqual(['Director']);
+    expect(row.agents).toEqual(['EXEC-BIBLE-AUTHOR']);
   });
 });
