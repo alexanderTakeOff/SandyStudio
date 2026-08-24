@@ -22,6 +22,22 @@ import { sb } from './run/_env';
 import { createThread, persistTurn, resolveOpenThreadId } from '../lib/concierge/threads';
 import { ensureCachedMedia } from '../lib/media-cache';
 import { keyboardForText } from '../lib/telegram/questions';
+import { firstCommandArgument } from '../lib/telegram/commands';
+import {
+  getConciergeProviderOverride,
+  setConciergeProviderOverride,
+  type ConciergeProviderChoice,
+  type ConciergeProviderOption,
+} from '../lib/api/concierge-provider-config';
+import { logEvent } from '../lib/api/events';
+import {
+  modelChoiceFromCallback,
+  modelChoiceFromText,
+  modelChoiceId,
+  modelDisplayName,
+  modelKeyboard,
+  modelStatusText,
+} from '../lib/telegram/model-control';
 import {
   answerCallback,
   downloadFile,
@@ -176,6 +192,83 @@ async function episodeByCode(code: string): Promise<{ id: string; episode_code: 
     .limit(1)
     .maybeSingle();
   return (data as { id: string; episode_code: string; status: string } | null) ?? null;
+}
+
+async function currentExecutedModel(state: BotState): Promise<{
+  choice: ConciergeProviderChoice | null;
+  busy: boolean;
+}> {
+  const threadId = await currentThreadId(state);
+  if (!threadId) return { choice: null, busy: false };
+  const { data } = await sb
+    .from('concierge_threads')
+    .select('mind_session')
+    .eq('id', threadId)
+    .maybeSingle();
+  const mind = ((data as { mind_session?: Record<string, unknown> } | null)?.mind_session ?? {}) as {
+    provider?: unknown;
+    model?: unknown;
+    busy?: unknown;
+  };
+  const choice: ConciergeProviderChoice | null =
+    (mind.provider === 'claude-code' || mind.provider === 'codex') && typeof mind.model === 'string'
+      ? { provider: mind.provider, model: mind.model }
+      : null;
+  return { choice, busy: Boolean(mind.busy) };
+}
+
+async function selectedModel(): Promise<ConciergeProviderChoice> {
+  return (
+    (await getConciergeProviderOverride(sb as never)) ??
+    // No DB row: mirror mind-bridge's deliberate keyless fallback.
+    modelChoiceFromText('opus')!
+  );
+}
+
+async function sendModelPicker(state: BotState, chatId: number, prefix?: string): Promise<void> {
+  const selected = await selectedModel();
+  const executed = await currentExecutedModel(state);
+  await sendMessage(
+    chatId,
+    [prefix, modelStatusText(selected, executed.choice), '', 'Нажатие меняет следующий ход.']
+      .filter(Boolean)
+      .join('\n'),
+    modelKeyboard(modelChoiceId(selected)),
+  );
+}
+
+async function switchModel(
+  state: BotState,
+  chatId: number,
+  choice: ConciergeProviderOption,
+): Promise<void> {
+  try {
+    const before = await currentExecutedModel(state);
+    await setConciergeProviderOverride(sb as never, choice);
+    await logEvent(sb as never, {
+      event_type: 'provider_assignment_changed',
+      severity: 'info',
+      title: `Polina provider set → ${choice.display_name}`,
+      description: `Director switched the Prod Assistant subscription harness from Telegram.`,
+      actor: 'director:telegram',
+      metadata: {
+        kind: 'concierge_provider_changed',
+        source: 'telegram',
+        provider: choice.provider,
+        model: choice.model,
+      },
+    });
+    const note = before.busy
+      ? `✓ ${modelDisplayName(choice)} выбрана. Текущий ход не прерываю; следующий пойдёт на ней.`
+      : `✓ ${modelDisplayName(choice)} выбрана. Следующий ход пойдёт на ней.`;
+    await sendModelPicker(state, chatId, note);
+  } catch (error) {
+    await sendMessage(
+      chatId,
+      `Модель не переключил: ${error instanceof Error ? error.message : error}`,
+    ).catch(() => {});
+    throw error;
+  }
 }
 
 // ─────────────────────────── медиа ───────────────────────────
@@ -343,6 +436,7 @@ const HELP = [
   '',
   '/e SS-S20-E08 — перевести пульт на эпизод (можно просто E08). Сам он идёт за твоим последним словом — где написал в панели, там и пульт.',
   '/что — где мы сейчас',
+  '/model — выбрать модель кнопками; /model terra — быстро',
   '/стоп — оборвать залипший ход',
   '',
   'Текст без команды уходит Полине. Кнопки под её ответом — это твои коды ответов.',
@@ -361,9 +455,10 @@ async function handleCommand(state: BotState, chatId: number, text: string): Pro
       return true;
     case '/e':
     case '/эпизод': {
-      if (!arg) return await sendMessage(chatId, 'Какой эпизод? Напр. /e SS-S20-E08').then(() => true);
-      const ep = await episodeByCode(arg);
-      if (!ep) return await sendMessage(chatId, `Эпизода «${arg}» не нашёл.`).then(() => true);
+      const episodeArg = firstCommandArgument(text);
+      if (!episodeArg) return await sendMessage(chatId, 'Какой эпизод? Напр. /e SS-S20-E08').then(() => true);
+      const ep = await episodeByCode(episodeArg);
+      if (!ep) return await sendMessage(chatId, `Эпизода «${episodeArg}» не нашёл.`).then(() => true);
       // Переход — это тоже слово Директора: строка в тред эпизода (без `for_bridge`,
       // ход не нужен), и закон «иди за последним словом» переводит пульт сам.
       const { data: epRow } = await sb.from('episodes').select('series_id').eq('id', ep.id).maybeSingle();
@@ -402,6 +497,20 @@ async function handleCommand(state: BotState, chatId: number, text: string): Pro
       );
       return true;
     }
+    case '/model':
+    case '/модель': {
+      if (!arg) {
+        await sendModelPicker(state, chatId);
+        return true;
+      }
+      const choice = modelChoiceFromText(arg);
+      if (!choice) {
+        await sendModelPicker(state, chatId, `Модель «${arg}» не знаю.`);
+        return true;
+      }
+      await switchModel(state, chatId, choice);
+      return true;
+    }
     case '/стоп':
     case '/stop': {
       const ok = await sayToMind(state, '(отмена хода)', { cancel: true });
@@ -419,11 +528,17 @@ async function handleUpdate(state: BotState, u: TgUpdate): Promise<void> {
   if (u.callback_query) {
     const q = u.callback_query;
     const chatId = q.message?.chat.id ?? q.from.id;
-    if (allow.length > 0 && !allow.includes(chatId)) {
+    if (allow.length === 0 || !allow.includes(chatId)) {
       await answerCallback(q.id, 'нет доступа');
       return;
     }
     const code = (q.data ?? '').trim();
+    const modelChoice = modelChoiceFromCallback(code);
+    if (modelChoice) {
+      await answerCallback(q.id, 'переключаю…');
+      await switchModel(state, chatId, modelChoice);
+      return;
+    }
     await answerCallback(q.id, code);
     const ok = await sayToMind(state, code, { via: 'button' });
     await sendMessage(chatId, ok ? `→ ${code}` : NO_PLACE);

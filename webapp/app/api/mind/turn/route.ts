@@ -123,7 +123,9 @@ export async function POST(req: Request): Promise<NextResponse> {
     }
     await writeThreadMindSession(sb as never, threadId, {
       previous_session_id: mind.session_id ?? null,
+      previous_session_ids: mind.session_ids ?? {},
       session_id: null,
+      session_ids: {},
       context_tokens: null,
     });
     const note = await persistTurn(sb as never, threadId, {

@@ -12,24 +12,41 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { CONCIERGE_PROVIDER_CATALOG } from '../../lib/api/concierge-provider-config';
+import {
+  CONCIERGE_PROVIDER_CATALOG,
+  coerceConciergeProviderChoice,
+} from '../../lib/api/concierge-provider-config';
 
 const bridgeSource = readFileSync(resolve(process.cwd(), 'scripts', 'mind-bridge.ts'), 'utf-8');
 
 describe('модель ума приходит из настроек студии', () => {
-  it('каталог настроек предлагает то, чем ум работает НА САМОМ ДЕЛЕ — алиасы подписки', () => {
+  it('каталог предлагает только два реальных подписочных harness-пути', () => {
     const harness = CONCIERGE_PROVIDER_CATALOG.filter((o) => o.provider === 'claude-code');
     expect(harness.map((o) => o.model).sort()).toEqual(['opus', 'sonnet']);
-    // Подписке ключ не нужен: непустой envKey зажёг бы в UI ложное «no key».
-    for (const o of harness) expect(o.envKey).toBe('');
+    const codex = CONCIERGE_PROVIDER_CATALOG.filter((o) => o.provider === 'codex');
+    expect(codex.map((o) => o.model).sort()).toEqual([
+      'gpt-5.6-luna',
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+    ]);
+    expect(new Set(CONCIERGE_PROVIDER_CATALOG.map((o) => o.provider))).toEqual(
+      new Set(['claude-code', 'codex']),
+    );
+    // Оба пути берут auth из подписочного CLI, не API-key.
+    for (const o of CONCIERGE_PROVIDER_CATALOG) expect(o.envKey).toBe('');
+  });
+
+  it('мигрирует старый OpenAI Terra в подписочный Codex-runner', () => {
+    expect(
+      coerceConciergeProviderChoice({ provider: 'openai', model: 'gpt-5.6-terra' }),
+    ).toEqual({ provider: 'codex', model: 'gpt-5.6-terra' });
   });
 
   it('мост берёт модель хода из app_config, а не из константы окружения', () => {
-    expect(bridgeSource).toContain('await resolveModel()');
-    expect(bridgeSource).toContain("'--model', model");
-    // Env остаётся ФОЛБЭКОМ — но не источником: подстановка константы в argv
-    // означала бы, что выбор в Settings снова ни на что не влияет.
-    expect(bridgeSource).not.toContain("'--model', MODEL_FALLBACK");
+    expect(bridgeSource).toContain('await resolveHarnessChoice()');
+    expect(bridgeSource).toContain('buildHarnessInvocation(choice');
+    // Явный неподдерживаемый выбор не имеет ветки «иду на fallback».
+    expect(bridgeSource).not.toContain('иду на ${HARNESS_FALLBACK');
   });
 
   it('мост читает ту же строку настроек, что пишет панель Settings', () => {
@@ -38,6 +55,7 @@ describe('модель ума приходит из настроек студи�
   });
 
   it('модель исполненного хода попадает в карту сессии — шапка не должна врать', () => {
-    expect(bridgeSource).toMatch(/model,\s*\}\);/);
+    expect(bridgeSource).toContain('provider: choice.provider');
+    expect(bridgeSource).toContain('model: choice.model');
   });
 });
