@@ -247,6 +247,12 @@ export function defineTool<const S extends ToolSpec>(
 
   main(ctx).catch((e: unknown) => {
     console.error('ERROR', e instanceof Error ? e.message : e);
+    // Тело отказа провайдера — часть отказа, а не приложение к нему (§14).
+    // Без этой строки `setThumbnail failed (403)` не отличался от «403» вообще:
+    // причину (квота · неподтверждённый аккаунт · размер файла) площадка пишет
+    // ровно здесь, и молчание о ней стоило прогону лишний круг догадок.
+    const body = (e as { body?: unknown })?.body;
+    if (typeof body === 'string' && body) console.error('ОТВЕТ ПЛОЩАДКИ:', body);
     process.exit(1);
   });
 
