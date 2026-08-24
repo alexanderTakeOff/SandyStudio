@@ -287,6 +287,12 @@ Per [CLAUDE.md §6](../CLAUDE.md). Approval authority levels.
 
 System modes (orthogonal): `===1===` ANALYTICS (read-only), `===5===` EDIT (writes permitted).
 
+### Subscription harness / Подписочный харнес
+Headless agent runtime authenticated by the Director's product subscription, not
+an API key. Polina's `mind-bridge` supports two interchangeable implementations:
+`claude-code` and `codex`. Model choice is a Studio Settings value; switching the
+harness does not change the thread, tools, gates, or Telegram channel.
+
 ---
 
 ## 9. Scope discipline / Дисциплина скоупа
