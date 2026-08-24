@@ -97,7 +97,7 @@ export async function setConciergeProviderOverride(
   supabase: Client,
   choice: ConciergeProviderChoice,
 ): Promise<void> {
-  await supabase.from('app_config').upsert(
+  const { error } = await supabase.from('app_config').upsert(
     {
       scope: SCOPE,
       key: KEY,
@@ -107,6 +107,9 @@ export async function setConciergeProviderOverride(
     } as never,
     { onConflict: 'scope,key' },
   );
+  if (error) {
+    throw new Error(`concierge provider update failed: ${error.message}`);
+  }
   _appliedAt = 0; // bust the TTL cache so the next request re-reads immediately
 }
 
