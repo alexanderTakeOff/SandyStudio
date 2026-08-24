@@ -261,7 +261,9 @@ export const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
   // Канон СЕРИИ — первая строка, потому что без него шесть строк ниже мертвы.
   // Отдельная сущность, а не стадия эпизода: она объясняет, почему Reference
   // Artist упадёт, ДО того как он упадёт (решение Директора 20, 2026-08-06).
-  { id: 'series_canon',        label: 'Канон серии',       subtitle: 'уровень сериала',      agents: ['Director'],   phase: 'pre-production', tier: 'primary', role: 'input',    emoji: '📚' },
+  // 2026-08-24 — слово Директора (S22): канон создаёт ПОЛИНА на касте, а не ждёт
+  // входа; гейт утверждения плит остаётся его. Роль сменена input→author.
+  { id: 'series_canon',        label: 'Канон серии',       subtitle: 'уровень сериала',      agents: ['EXEC-BIBLE-AUTHOR'], phase: 'pre-production', tier: 'primary', role: 'author', emoji: '📚' },
   { id: 'brief',               label: 'Brief',             agents: ['Director'],            phase: 'pre-production', tier: 'primary', role: 'input',     emoji: '🎬' },
   // 2026-08-06 — Casting is NOT an agent. `ART-AD` exists in no registry and has
   // no runner; the cast is a plain POST route that inserts the slugs the caller
