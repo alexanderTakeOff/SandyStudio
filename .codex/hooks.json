@@ -1,4 +1,5 @@
 {
+  "description": "Existing SandyStudio hooks plus Polina subscription-harness hard limits and live context.",
   "hooks": {
     "PreToolUse": [
       {
@@ -45,6 +46,18 @@
             "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/verify-trio-on-push.cjs\""
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node C:/SandyStudio-polina/.claude/hooks/polina-pretool.cjs",
+            "commandWindows": "node C:/SandyStudio-polina/.claude/hooks/polina-pretool.cjs",
+            "timeout": 30,
+            "statusMessage": "Checking Polina hard limits"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -72,6 +85,19 @@
           {
             "type": "command",
             "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/parallel-session-warn.cjs\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node C:/SandyStudio-polina/.claude/hooks/polina-userprompt.cjs",
+            "commandWindows": "node C:/SandyStudio-polina/.claude/hooks/polina-userprompt.cjs",
+            "timeout": 30,
+            "statusMessage": "Loading live studio context"
           }
         ]
       }
