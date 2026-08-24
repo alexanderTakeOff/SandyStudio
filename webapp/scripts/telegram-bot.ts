@@ -261,26 +261,54 @@ async function handleIncomingMedia(state: BotState, msg: TgMessage, chatId: numb
 
 // ─────────────────── студия → телеграм ───────────────────
 
+/** Тред → человекочитаемый код (эпизод/сериал) — чтобы пометить реплику из «не текущего» разговора. */
+const threadCodeCache = new Map<string, string>();
+async function threadCode(threadId: string): Promise<string> {
+  const hit = threadCodeCache.get(threadId);
+  if (hit) return hit;
+  const { data: th } = await sb.from('concierge_threads').select('episode_id,series_id').eq('id', threadId).maybeSingle();
+  const t = th as { episode_id: string | null; series_id: string | null } | null;
+  let code = '?';
+  if (t?.episode_id) {
+    const { data: ep } = await sb.from('episodes').select('episode_code').eq('id', t.episode_id).maybeSingle();
+    code = (ep as { episode_code?: string } | null)?.episode_code ?? code;
+  } else if (t?.series_id) {
+    const { data: s } = await sb.from('series').select('code').eq('id', t.series_id).maybeSingle();
+    code = (s as { code?: string } | null)?.code ?? code;
+  }
+  threadCodeCache.set(threadId, code);
+  return code;
+}
+
 async function pumpStudio(state: BotState, chatId: number): Promise<void> {
   const threadId = await currentThreadId(state, chatId);
   if (!threadId) return;
 
+  // Телеграм — окно в РАЗГОВОР Директора с умом ЦЕЛИКОМ, а не в один тред.
+  // 24.08: фильтр по текущему треду терял (а) панельные реплики самого Директора —
+  // роль director не доставлялась вовсе, «в телеграме фрагменты»; (б) ответ Полины,
+  // догнавший СТАРЫЙ тред после того, как Директор уже перешёл в новый. Поэтому
+  // опрос глобальный; чужой (не текущий) тред помечается кодом эпизода/сериала.
   const { data: turns } = await sb
     .from('concierge_turns')
-    .select('role,content,metadata,created_at')
-    .eq('thread_id', threadId)
+    .select('thread_id,role,content,metadata,created_at')
     .gt('created_at', state.lastTurnAt)
-    .in('role', ['assistant', 'system'])
-    .order('created_at', { ascending: true });
+    .in('role', ['assistant', 'system', 'director'])
+    .eq('event_type', 'message')
+    .order('created_at', { ascending: true })
+    .limit(30);
 
-  for (const t of (turns ?? []) as Array<{ role: string; content: string; metadata: Record<string, unknown> | null; created_at: string }>) {
-    const text = (t.content ?? '').trim();
-    if (text) {
-      const head = t.role === 'system' ? '⚠️ ' : '';
-      await sendMessage(chatId, head + text, keyboardForText(text));
-    }
+  for (const t of (turns ?? []) as Array<{ thread_id: string; role: string; content: string; metadata: Record<string, unknown> | null; created_at: string }>) {
     state.lastTurnAt = t.created_at;
     saveState(state);
+    const meta = t.metadata ?? {};
+    // Свои телеграм-реплики Директор уже видит в чате — эхо не шлём.
+    if (t.role === 'director' && (meta.source === 'telegram' || meta.switch)) continue;
+    const text = (t.content ?? '').trim();
+    if (!text) continue;
+    const from = t.thread_id === threadId ? '' : `[${await threadCode(t.thread_id)}] `;
+    const head = t.role === 'system' ? '⚠️ ' : t.role === 'director' ? '🖥 ' : '';
+    await sendMessage(chatId, from + head + text, t.role === 'assistant' ? keyboardForText(text) : undefined);
   }
 
   // Изделия эпизода — приходят сами, как только станция их предъявила.
