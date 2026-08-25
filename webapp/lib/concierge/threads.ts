@@ -321,6 +321,9 @@ export async function resolveOpenThreadId(
 export interface MindSessionMap {
   session_id?: string | null;
   previous_session_id?: string | null;
+  /** Provider-scoped sessions preserve both minds when Director switches back. */
+  session_ids?: Partial<Record<'claude-code' | 'codex', string | null>>;
+  previous_session_ids?: Partial<Record<'claude-code' | 'codex', string | null>>;
   busy?: { pid: number; turn_ids: string[]; started_at: string } | null;
   context_tokens?: number | null;
   context_limit?: number | null;
@@ -330,6 +333,8 @@ export interface MindSessionMap {
    * между настройкой и реальностью уже стоило ложной тревоги 08.08.
    */
   model?: string | null;
+  /** Harness that ACTUALLY executed the last turn. */
+  provider?: 'claude-code' | 'codex' | null;
   updated_at?: string;
 }
 

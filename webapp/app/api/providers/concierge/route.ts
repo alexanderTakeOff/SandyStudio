@@ -50,7 +50,7 @@ export const GET = withApiHandler(async () => {
 
 const Body = z
   .object({
-    provider: z.enum(['openai', 'gemini', 'anthropic', 'claude-code']),
+    provider: z.enum(['openai', 'gemini', 'anthropic', 'claude-code', 'codex']),
     model: z.string().min(1).max(120),
   })
   .strict();

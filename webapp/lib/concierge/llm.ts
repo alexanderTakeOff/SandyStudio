@@ -36,7 +36,7 @@ const ANTHROPIC_OPENAI_BASE = 'https://api.anthropic.com/v1/';
 // быть не может; он живёт в этом union потому, что выбор модели Полины — ОДНА
 // настройка студии (Директор: «провайдеры меняются через Studio Settings»), и
 // разводить вторую ради моста значило бы завести вторую правду.
-export type ConciergeProvider = 'openai' | 'gemini' | 'anthropic' | 'claude-code';
+export type ConciergeProvider = 'openai' | 'gemini' | 'anthropic' | 'claude-code' | 'codex';
 
 // ── Live provider override (Director 2026-07-05) ─────────────────────────────
 // The studio Settings → Providers "Полина" dropdown persists a { provider, model }
@@ -54,9 +54,12 @@ export function conciergeProvider(): ConciergeProvider {
   if (_override) return _override.provider;
   const p = (process.env.CONCIERGE_PROVIDER ?? '').toLowerCase();
   if (p === 'gemini') return 'gemini';
+  if (p === 'codex' || p === 'openai-subscription') return 'codex';
   if (p === 'claude-code' || p === 'harness') return 'claude-code';
   if (p === 'anthropic' || p === 'opus' || p === 'claude') return 'anthropic';
-  return 'openai';
+  // New-paradigm default: the only keyless path that existed before Codex was
+  // added. Explicit CONCIERGE_PROVIDER=openai still selects the legacy API path.
+  return p === 'openai' ? 'openai' : 'claude-code';
 }
 
 export function conciergeModel(): string {
@@ -67,6 +70,9 @@ export function conciergeModel(): string {
   // стороне провайдера, а алиас переживает смену поколения.
   if (provider === 'claude-code') {
     return process.env.MIND_BRIDGE_MODEL?.trim() || 'opus';
+  }
+  if (provider === 'codex') {
+    return process.env.MIND_CODEX_MODEL?.trim() || 'gpt-5.6-terra';
   }
   if (provider === 'gemini') {
     return process.env.CONCIERGE_GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
@@ -82,6 +88,7 @@ const PROVIDER_DISPLAY: Record<ConciergeProvider, string> = {
   gemini: 'Gemini',
   anthropic: 'Anthropic',
   'claude-code': 'Подписка',
+  codex: 'Подписка OpenAI',
 };
 
 /**
@@ -99,9 +106,9 @@ export function createConciergeClient(): OpenAI {
   // У харнеса HTTP-клиента НЕТ по построению: ходы ведёт мост через `claude -p`
   // по подписке. Молчаливое падение в ветку OpenAI было бы худшим исходом —
   // Полина ответила бы чужой моделью за деньги, и никто бы не заметил.
-  if (provider === 'claude-code') {
+  if (provider === 'claude-code' || provider === 'codex') {
     throw new Error(
-      'Полина работает в харнесе (claude-code): её ходы ведёт мост по подписке, HTTP-клиента у этого провайдера нет. ' +
+      `Полина работает в подписочном harness (${provider}): её ходы ведёт мост, HTTP-клиента у этого провайдера нет. ` +
         'Если нужен API-путь — выберите модель OpenAI/Anthropic/Gemini в Studio Settings → Providers.',
     );
   }

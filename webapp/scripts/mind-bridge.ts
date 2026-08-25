@@ -23,7 +23,7 @@
 // Запуск: npx tsx scripts/mind-bridge.ts   (из webapp/; попадёт в start-stack)
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { sb } from './run/_env';
 import {
@@ -33,6 +33,18 @@ import {
   writeThreadMindSession,
   type MindSessionMap,
 } from '../lib/concierge/threads';
+import {
+  coerceConciergeProviderChoice,
+} from '../lib/api/concierge-provider-config';
+import {
+  buildHarnessInvocation,
+  consumeCodexJsonEvent,
+  nextProviderSessions,
+  providerSessionId,
+  sanitizeSubscriptionEnv,
+  type CodexJsonState,
+  type MindHarnessChoice,
+} from '../lib/concierge/mind-harness';
 
 const CLONE_DIR = process.env.POLINA_CLONE_DIR ?? 'C:\\SandyStudio-polina';
 const CLONE_WEBAPP = resolve(CLONE_DIR, 'webapp');
@@ -40,8 +52,12 @@ const ROLE_FILE = resolve(CLONE_WEBAPP, 'roles', 'polina.md');
 // НЕ settings.json репо (его делят сессии Тео) — отдельный файл Полины,
 // подаётся явно (--settings — иначе хуки в headless не грузятся, Ш54).
 const SETTINGS_FILE = resolve(CLONE_DIR, '.claude', 'polina-settings.json');
-/** Фолбэк, когда в настройках студии выбора нет. Не «настройка», а последнее слово. */
-const MODEL_FALLBACK = process.env.MIND_BRIDGE_MODEL ?? 'opus';
+const STUDIO_FILMS_DIR = process.env.MIND_STUDIO_FILMS_DIR ?? 'C:\\SandyStudio\\FILMS';
+/** Фолбэк только для ОТСУТСТВУЮЩЕЙ строки Settings, не для неподдерживаемого выбора. */
+const HARNESS_FALLBACK: MindHarnessChoice = {
+  provider: 'claude-code',
+  model: process.env.MIND_BRIDGE_MODEL ?? 'opus',
+};
 const POLL_MS = 2_500;
 const TURN_TIMEOUT_MS = Number(process.env.MIND_BRIDGE_TURN_TIMEOUT_MS ?? 45 * 60 * 1000);
 // Полный набор рук; границы держат хуки (Ф3) и права клона, не кастрация списка.
@@ -117,31 +133,32 @@ function log(msg: string): void {
  * меняются через Studio Settings»). Читается ПЕРЕД КАЖДЫМ ходом: выбор в UI
  * действует со следующего сообщения, без перезапуска моста и пересборки.
  *
- * Мост исполняет только строки провайдера `claude-code` — алиасы подписки. Если
- * в настройке выбран API-провайдер (OpenAI/Anthropic-по-ключу), это НЕ его путь:
- * берём фолбэк и говорим об этом в лог, потому что молча пойти чужой моделью —
- * тот самый тихий отказ, который дороже громкого.
+ * Два исполнимых пути: Claude Code и OpenAI Codex CLI — оба по подписке.
+ * Явная неподдерживаемая строка падает громко; на Opus не подменяется.
  */
-async function resolveModel(): Promise<string> {
+async function resolveHarnessChoice(): Promise<MindHarnessChoice> {
   try {
-    const { data } = await sb
+    const { data, error } = await sb
       .from('app_config')
       .select('value')
       .eq('scope', 'providers')
       .eq('key', 'concierge_provider')
       .maybeSingle();
-    const v = ((data as { value?: unknown } | null)?.value ?? {}) as {
-      provider?: string;
-      model?: string;
-    };
-    if (v.provider === 'claude-code' && v.model) return v.model;
-    if (v.provider) {
-      log(`настройка студии просит ${v.provider}/${v.model ?? '?'} — это API-путь, мост его не ведёт; иду на ${MODEL_FALLBACK}`);
+    if (error) throw error;
+    if (!data) return HARNESS_FALLBACK;
+    const raw = (data as { value?: unknown }).value;
+    const normalized = coerceConciergeProviderChoice(raw);
+    if (!normalized || (normalized.provider !== 'claude-code' && normalized.provider !== 'codex')) {
+      const requested = raw as { provider?: unknown; model?: unknown } | null;
+      throw new Error(
+        `Settings просят неисполнимый harness ` +
+          `${String(requested?.provider ?? '?')}/${String(requested?.model ?? '?')}`,
+      );
     }
+    return normalized as MindHarnessChoice;
   } catch (e) {
-    log(`настройку модели прочитать не вышло (${e instanceof Error ? e.message : e}) — фолбэк ${MODEL_FALLBACK}`);
+    throw new Error(`настройка harness неисполнима: ${e instanceof Error ? e.message : e}`);
   }
-  return MODEL_FALLBACK;
 }
 
 // СЕССИЯ ЖИВЁТ НА ТРЕДЕ (0057). Раньше карта лежала в `episodes.metadata`, и это
@@ -175,18 +192,15 @@ async function runTurn(args: {
   tab: string | null;
 }): Promise<void> {
   const mind = await readMindSession(args.threadId);
-  const model = await resolveModel();
-
-  const cli: string[] = [
-    '-p',
-    '--output-format', 'stream-json',
-    '--verbose',
-    '--model', model,
-    '--allowedTools', ALLOWED_TOOLS,
-    '--append-system-prompt-file', ROLE_FILE,
-  ];
-  if (mind.session_id) cli.push('--resume', mind.session_id);
-  if (existsSync(SETTINGS_FILE)) cli.push('--settings', SETTINGS_FILE);
+  const choice = await resolveHarnessChoice();
+  const previousSessionId = providerSessionId(mind, choice.provider);
+  const invocation = buildHarnessInvocation(choice, previousSessionId, {
+    cloneWebapp: CLONE_WEBAPP,
+    roleFile: ROLE_FILE,
+    claudeSettingsFile: SETTINGS_FILE,
+    studioFilmsDir: STUDIO_FILMS_DIR,
+    allowedClaudeTools: ALLOWED_TOOLS,
+  });
 
   // Подписка, не API: ключ вычищается из env хода (Ш54). Остальное окружение —
   // как у моста; RUN_* выставляются на ход, инструменты клона читают их из env.
@@ -194,8 +208,7 @@ async function runTurn(args: {
   // RUN_* выставляются ТОЛЬКО те, что у треда есть: на студийном разговоре нет
   // эпизода, и подсунуть ей чужой хуже, чем не дать никакого — инструменты
   // эпизода отказали бы честно, а с чужим id молча сделали бы не ту работу.
-  const env = { ...process.env };
-  delete env.ANTHROPIC_API_KEY;
+  const env = sanitizeSubscriptionEnv(process.env);
   delete env.RUN_EPISODE_ID;
   delete env.RUN_SERIES_ID;
   if (args.episodeId) env.RUN_EPISODE_ID = args.episodeId;
@@ -206,8 +219,11 @@ async function runTurn(args: {
     : args.seriesId
       ? `сериал ${args.seriesId.slice(0, 8)}`
       : 'студия';
-  log(`ход → ${where} (${mind.session_id ? 'resume ' + mind.session_id.slice(0, 8) : 'новая сессия'})`);
-  const child = spawn('claude', cli, {
+  log(
+    `ход → ${where} · ${choice.provider}/${choice.model} ` +
+      `(${previousSessionId ? 'resume ' + previousSessionId.slice(0, 8) : 'новая сессия'})`,
+  );
+  const child = spawn(invocation.command, invocation.args, {
     cwd: CLONE_WEBAPP,
     env,
     shell: true, // npm-shim claude.cmd на Windows не спавнится без shell
@@ -217,7 +233,8 @@ async function runTurn(args: {
   await writeMindSession(args.threadId, {
     busy: { pid: child.pid ?? -1, turn_ids: args.turnIds, started_at: new Date().toISOString() },
     // Шапка чата показывает ИСПОЛНЕННОЕ, а не выбранное в настройке.
-    model,
+    provider: choice.provider,
+    model: choice.model,
   });
 
   // ОБСТАНОВКА (12.08): вкладка — параметр внутри сессии, а не своя сессия
@@ -235,7 +252,13 @@ async function runTurn(args: {
   } else {
     scene.push('уровень СТУДИИ — открытого эпизода нет');
   }
-  const payload = `[ОБСТАНОВКА] Директор смотрит: ${scene.join(' · ')}\n\n${args.text}`;
+  const turnPayload = `[ОБСТАНОВКА] Директор смотрит: ${scene.join(' · ')}\n\n${args.text}`;
+  const payload =
+    choice.provider === 'codex' && !previousSessionId
+      ? `[АДАПТАЦИЯ HARNESS] В роли слова Claude Code/Bash исторические. ` +
+        `Ты работаешь в Codex CLI с эквивалентными shell/файл/изображение tools.\n\n` +
+        `${readFileSync(ROLE_FILE, 'utf8')}\n\n${turnPayload}`
+      : turnPayload;
 
   child.stdin.write(payload, 'utf8');
   child.stdin.end();
@@ -246,8 +269,14 @@ async function runTurn(args: {
   // Окно модели НЕ хардкодим в панели: у 1M-варианта Opus оно впятеро больше, чем
   // у обычного, и вчерашние «200k» дали Директору 519% при живых 209k. Мост знает,
   // какой моделью запускает ход, — он и сообщает предел вместе с числом.
-  const contextLimit = Number(process.env.MIND_CONTEXT_LIMIT ?? 1_000_000);
+  const contextLimit = Number(
+    choice.provider === 'codex'
+      ? process.env.MIND_CODEX_CONTEXT_LIMIT ?? invocation.contextLimit
+      : process.env.MIND_CONTEXT_LIMIT ?? invocation.contextLimit,
+  );
   let resultMeta: Record<string, unknown> = {};
+  let codexState: CodexJsonState = {};
+  const turnStartedAt = Date.now();
   let stderrTail = '';
   let buf = '';
 
@@ -266,6 +295,21 @@ async function runTurn(args: {
       try {
         ev = JSON.parse(line) as Record<string, unknown>;
       } catch {
+        continue;
+      }
+      if (choice.provider === 'codex') {
+        const auditCount = codexState.commandAudits?.length ?? 0;
+        codexState = consumeCodexJsonEvent(codexState, ev);
+        const latestAudits = codexState.commandAudits ?? [];
+        if (latestAudits.length > auditCount) {
+          const command = latestAudits.at(-1) ?? 'command';
+          void persistTurn(sb as never, args.threadId, {
+            role: 'tool',
+            event_type: 'tool_call',
+            content: `Bash ${command}`,
+            metadata: { bridge: true, provider: 'codex' },
+          }).catch(() => {});
+        }
         continue;
       }
       if (ev.type === 'assistant') {
@@ -325,9 +369,28 @@ async function runTurn(args: {
   clearTimeout(timeout);
   inFlight.delete(args.threadId);
 
-  const sessionId = typeof resultMeta.session_id === 'string' ? resultMeta.session_id : mind.session_id;
+  if (choice.provider === 'codex') {
+    finalText = codexState.finalText ?? '';
+    resultMeta = {
+      session_id: codexState.sessionId ?? previousSessionId,
+      cost_usd: 0,
+      duration_ms: Date.now() - turnStartedAt,
+      is_error: codexState.isError ?? code !== 0,
+      error: codexState.error,
+      context_tokens: codexState.contextTokens ?? null,
+      input_tokens: codexState.inputTokens,
+      cached_input_tokens: codexState.cachedInputTokens,
+      output_tokens: codexState.outputTokens,
+    };
+  }
+
+  const sessionId =
+    typeof resultMeta.session_id === 'string' ? resultMeta.session_id : previousSessionId;
   await writeMindSession(args.threadId, {
     session_id: sessionId,
+    session_ids: nextProviderSessions(mind, choice.provider, sessionId),
+    provider: choice.provider,
+    model: choice.model,
     busy: null,
     // Кладём рядом с сессией, чтобы панель показывала заполненность контекста
     // тем же чтением эпизода, которым уже показывает «Полина работает».
@@ -340,7 +403,12 @@ async function runTurn(args: {
       role: 'assistant',
       event_type: 'message',
       content: finalText,
-      metadata: { ...resultMeta, bridge: true },
+      metadata: {
+        ...resultMeta,
+        bridge: true,
+        provider: choice.provider,
+        model: choice.model,
+      },
     });
     // Деньги — оценкой движка (D95): цифра из result, не из головы.
     const cost = typeof resultMeta.cost_usd === 'number' ? resultMeta.cost_usd : null;
@@ -350,8 +418,11 @@ async function runTurn(args: {
         episode_id: args.episodeId,
         series_id: args.seriesId,
         agent_id: 'POLINA-MIND',
-        api_provider: 'anthropic',
-        model_or_tier: `${model}/subscription-estimate`,
+        api_provider: invocation.apiProvider,
+        model_or_tier:
+          choice.provider === 'codex'
+            ? `${choice.model}/subscription`
+            : `${choice.model}/subscription-estimate`,
         operation: 'mind-turn',
         cost_usd: cost,
         duration_ms: typeof resultMeta.duration_ms === 'number' ? resultMeta.duration_ms : null,
@@ -359,7 +430,7 @@ async function runTurn(args: {
     }
     await claimTurns(args.turnIds, 'answered');
     failStreak.delete(args.threadId);
-    log(`ход ← ok · $${resultMeta.cost_usd ?? '?'} · exit=${code}`);
+    log(`ход ← ok · ${choice.provider}/${choice.model} · $${resultMeta.cost_usd ?? '?'} · exit=${code}`);
   } else {
     // Обрыв — честной строкой, а не молчанием (худший класс отказа — тишина).
     await persistTurn(sb as never, args.threadId, {
@@ -499,9 +570,17 @@ async function pollOnce(): Promise<void> {
       turnIds: ids,
       tab: tabByThread.get(threadId) ?? null,
     }).catch(async (e) => {
-      log(`ход упал: ${e instanceof Error ? e.message : e}`);
+      const message = e instanceof Error ? e.message : String(e);
+      log(`ход упал: ${message}`);
       inFlight.delete(threadId);
       await writeMindSession(threadId, { busy: null }).catch(() => {});
+      await persistTurn(sb as never, threadId, {
+        role: 'system',
+        event_type: 'message',
+        content: `⚠ ход Полины не запущен: ${message}`,
+        metadata: { bridge: true, error: true, kind: 'mind_harness_unavailable' },
+      }).catch(() => {});
+      await claimTurns(ids, 'failed').catch(() => {});
     });
   }
 }
@@ -523,8 +602,8 @@ async function main(): Promise<void> {
     }
   }
   log(
-    `мост запущен · клон=${CLONE_WEBAPP} · модель берётся из настроек студии ` +
-      `(фолбэк ${MODEL_FALLBACK}) · опрос ${POLL_MS}мс`,
+    `мост запущен · клон=${CLONE_WEBAPP} · harness берётся из Studio Settings ` +
+      `(фолбэк ${HARNESS_FALLBACK.provider}/${HARNESS_FALLBACK.model}) · опрос ${POLL_MS}мс`,
   );
   for (;;) {
     try {
