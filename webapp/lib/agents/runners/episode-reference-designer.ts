@@ -34,6 +34,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { promises as fs } from 'node:fs';
+import { parseStaging, renderStagingForPrompt } from '../../api/shot-staging';
 import path from 'node:path';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/types.gen';
@@ -748,6 +749,14 @@ function buildUserMessage(args: {
     `shot_id: ${shot.shot_id}`,
     `shot_role: ${shot.shot_role ?? '(unspecified)'}`,
     `camera_angle: ${shot.camera_angle ?? '(unspecified)'}`,
+    // ПОСТАНОВОЧНЫЙ ПАСПОРТ (2026-08-25). Без него дизайнер видел ракурс и не
+    // видел ни дистанции, ни оптики, ни света — и добирал их прозой наугад.
+    // Числа остаются в паспорте, сюда едет ЛУК: модель не считает миллиметры.
+    ...(() => {
+      const staging = parseStaging(shot as unknown as Record<string, unknown>);
+      if (!staging) return ['staging: (НЕ ЗАДАН раскадровщиком — скажи об этом вслух, не подставляй умолчание)'];
+      return ['staging (обязателен к исполнению):', ...renderStagingForPrompt(staging)];
+    })(),
     `duration_seconds: ${shot.duration_seconds ?? '(unspecified)'}`,
     // E33: sub_area + continuity_notes were parsed off the board and then
     // dropped here. sub_area is where the storyboarder actually wrote the light
