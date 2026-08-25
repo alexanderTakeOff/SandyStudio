@@ -125,6 +125,18 @@ describe('постановочный паспорт — чтение и ренд
     expect(lines).toContain('triangle of light');
   });
 
+  it('селфи со «статикой» не превращается в манекен — статика это НЕТ ПРОЕЗДА, а не неподвижность', () => {
+    // Поймано прогоном SH02 (25.08): «locked-off static shot, camera does not move»
+    // вместе с ригом-селфи — противоречие, которое модель разрешала в пользу манекена.
+    const selfie = { ...base, rig: 'selfie' as const, subject_distance_m: 0.5, lens_look: 'wide' as const,
+      shot_size: 'MCU' as const, lens_equiv_mm: 24, camera_move: { type: 'static' as const } };
+    const lines = renderStagingForPrompt(selfie).join('\n');
+    expect(lines).toContain('natural sway of the hand');
+    expect(lines).not.toContain('camera does not move');
+    // На штативе статика остаётся статикой.
+    expect(renderStagingForPrompt(base).join('\n')).toContain('locked-off static shot');
+  });
+
   it('геометрия считается, а не угадывается', () => {
     expect(expectedSizeFor(2.0, 85)).toBe('MCU');
     expect(expectedSizeFor(0.5, 24)).toBe('MCU');

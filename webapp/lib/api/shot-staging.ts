@@ -398,7 +398,15 @@ export function renderStagingForPrompt(s: StagingSpec): string[] {
 
   if (s.camera_move) {
     const m = s.camera_move;
-    const move = [m.speed, m.type === 'static' ? 'locked-off static shot, camera does not move' : m.type, m.direction]
+    // «Статика» означает НЕТ ПРОЕЗДА, а не «камера неподвижна»: у рига в руке
+    // всегда есть собственное покачивание, и «camera does not move» вместе с
+    // селфи — противоречие, которое модель разрешает в пользу манекена
+    // (поймано прогоном SH02 S22, 25.08).
+    const handheldRig = s.rig != null && (CLOSE_RIGS.has(s.rig) || s.rig === 'handheld');
+    const staticPhrase = handheldRig
+      ? 'no camera travel — only the natural sway of the hand holding it'
+      : 'locked-off static shot, camera does not move';
+    const move = [m.speed, m.type === 'static' ? staticPhrase : m.type, m.direction]
       .filter(Boolean)
       .join(' ');
     const gated = m.start_on ? `${move}; the camera does not start moving until ${m.start_on}` : move;
@@ -439,7 +447,7 @@ export function renderStagingForPrompt(s: StagingSpec): string[] {
 
   if (s.dof) {
     const focus = [s.dof === 'shallow' ? 'shallow depth of field' : s.dof === 'deep' ? 'deep focus, everything sharp' : 'moderate depth of field'];
-    if (s.focus_subject) focus.push(`${s.focus_subject} is the sharpest point`);
+    if (s.focus_subject) focus.push(`focus on ${s.focus_subject} — the sharpest point in frame`);
     lines.push(`- Focus: ${focus.join(', ')}`);
   }
 
