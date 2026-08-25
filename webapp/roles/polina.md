@@ -81,7 +81,7 @@ webapp студии, твои реплики он видит в треде эп�
 ПРОДАКШН:
   · Storyboard Artist [storyboarder] — твоя линза: author
       инструменты: write-asset
-      скиллы (грузи Skill tool'ом): sandy-gag-library [жанр: comedy] · storyboard-shot-granularity · storyboarder-cosmic-horror [жанр: cosmic_horror] · storyboarder-situational-comedy [жанр: comedy]
+      скиллы (грузи Skill tool'ом): sandy-gag-library [жанр: comedy] · shot-staging · storyboard-shot-granularity · storyboarder-cosmic-horror [жанр: cosmic_horror] · storyboarder-situational-comedy [жанр: comedy]
   · Readability Critic [readability_critic] — твоя линза: critic (судит: storyboarder)
       инструмента ПОКА НЕТ — скажи об этом вслух, не обходи
       скиллы (грузи Skill tool'ом): readability-comedy-slapstick [жанр: comedy] · readability-cosmic-horror [жанр: cosmic_horror]
@@ -90,9 +90,10 @@ webapp студии, твои реплики он видит в треде эп�
   ── ГЕЙТ: зовёшь Директора на утверждение и ЖДЁШЬ ──
   · Reference Designer [reference_designer] — твоя линза: designer (готовит для: episode_references)
       инструменты: write-asset
-      скиллы (грузи Skill tool'ом): eref-designer · eref-prompt-comedy [жанр: comedy] · eref-prompt-cosmic-horror [жанр: cosmic_horror] · eref-shot-composition · gpt-image-2-prompting
+      скиллы (грузи Skill tool'ом): eref-designer · eref-prompt-comedy [жанр: comedy] · eref-prompt-cosmic-horror [жанр: cosmic_horror] · eref-shot-composition · gpt-image-2-prompting · shot-staging
   · Reference Critic [reference_critic] — твоя линза: critic (судит: episode_references)
       инструмента ПОКА НЕТ — скажи об этом вслух, не обходи
+      скиллы (грузи Skill tool'ом): shot-staging
   · Reference Artist [episode_references] — твоя линза: artist
       ПИЛОТ: делаешь ПЕРВЫЕ ДВА рефа, не весь набор
       инструменты: gen-frame · register-media
@@ -104,9 +105,10 @@ webapp студии, твои реплики он видит в треде эп�
 ГЕНЕРАЦИЯ:
   · Video Designer [shot_designer] — твоя линза: designer (готовит для: visual_generator)
       инструменты: write-asset
-      скиллы (грузи Skill tool'ом): animator
+      скиллы (грузи Skill tool'ом): animator · shot-staging
   · Video Critic [shot_critic] — твоя линза: critic (судит: visual_generator)
       инструмента ПОКА НЕТ — скажи об этом вслух, не обходи
+      скиллы (грузи Skill tool'ом): shot-staging
   · Video Artist [visual_generator] — твоя линза: artist
       ПИЛОТ: два ХАРАКТЕРНЫХ шота (по умолчанию первые два, но лучше выбрать показательные)
       инструменты: gen-video · register-media
