@@ -14,13 +14,20 @@ export interface ThumbnailBytes {
   readonly contentType: string;
 }
 
-/** Минимальная форма клиента базы, которая тут нужна. */
+/** Минимальная форма клиента: ровно те звенья цепочки, которыми пользуемся ниже.
+ *  Описана структурно, а не через any, чтобы опечатка в звене падала компиляцией. */
+interface ThumbnailRow {
+  filename?: string | null;
+  drive_file_id?: string | null;
+  version?: number | null;
+}
+interface DbQuery {
+  eq: (column: string, value: string) => DbQuery;
+  order: (column: string, opts: { ascending: boolean }) => DbQuery;
+  limit: (n: number) => PromiseLike<{ data?: ThumbnailRow[] | null }>;
+}
 type Db = {
-  from: (t: string) => {
-    select: (c: string) => {
-      eq: (c: string, v: string) => any;
-    };
-  };
+  from: (table: string) => { select: (columns: string) => DbQuery };
 };
 
 /**
