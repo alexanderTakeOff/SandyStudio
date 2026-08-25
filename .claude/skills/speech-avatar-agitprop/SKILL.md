@@ -5,7 +5,7 @@ status: ACTIVE
 owner: Director
 flavor: process
 applies_when:
-  genre: [agitprop]
+  genre: [agitprop, doc]
 hard: true
 created: 2026-08-25
 ---
