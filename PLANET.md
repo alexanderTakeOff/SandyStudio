@@ -1,63 +1,68 @@
 # SandyStudio — PLANET.md
-## Planet: DISTRIBUTION AUTONOMY + SELF-CORRECTION | picked 2026-07-21
+## Планета: РАСШИРЕНИЕ СПОСОБНОСТЕЙ — новые темы и направления | выбрана 2026-08-25
 
-> One planet. Read after NORTH_STAR.md. Star → NORTH_STAR.md. Backlog → PLAN.md. master only.
-
----
-
-## Planet
-Machine reads how product landed. Machine turns own knobs — theme, format, quality.
-Director approves. Director does NOT tune by hand.
-
-WHY NOW: production autonomy believed done (Director 2026-07-21). HoG says publish.
-This closes second arc of Star: distribute → read feedback → correct course.
-Circle open without it. Factory makes, but cannot see itself.
-
-WHY BUILD MACHINE, NOT DO BY HAND: Director burns hot on building. Goes cold on
-daily fiddling. «Лучше два дня потерять — а потом за два часа долететь.»
-Hand-run growth dies of boredom. Machine does not.
+> Одна планета. Читается после NORTH_STAR.md. Звезда → NORTH_STAR.md. Бэклог → PLAN.md.
+> Только master.
 
 ---
 
-## Debt taken with eyes open
-Production autonomy NOT tested. «Мы так думаем, но не тестед» (Director 2026-07-21).
-New layer stands on unproven one. Risk: sensor says «landed worse» — cannot tell bad
-distribution knob from bad production. Known debt, not blocker.
-Closes on first clean episode brief→final with zero unplanned touches.
+## Планета
+
+Та же машина берёт РОД продукта, под который её не строили. Не второй сериал в том же
+жанре — другое направление: фотореалистичный человек вместо рисованного, речь вместо
+немоты, обращение в камеру вместо наблюдения, заказная работа вместо собственной серии.
+
+**ПОЧЕМУ СЕЙЧАС.** Звезда держит п.9 «второй жанр идёт на той же машине» дальним, и
+проверить его нечем, пока не появится настоящее чужое направление. S22 — оно и есть, и оно
+уже вскрыло станции, которых немая комедия не касалась: постановка кадра, речь, липсинк,
+идентичность реального человека.
+
+**ПОЧЕМУ НЕ «ПРОСТО СНЯТЬ ДЕМО».** Демо снимается руками за неделю. Планета — не ролик, а
+ответ на вопрос, сколько станций приходится ЗАВОДИТЬ на каждое новое направление.
 
 ---
 
-## Measure — NATURE of touch
-- **Planned** = approve theme, publication, money. Normal.
-- **Unplanned** = Director turns a knob the machine should have turned. Target ZERO.
+## Долг, взятый с открытыми глазами
+
+Дистрибуция и самокоррекция (прошлая планета) НЕ закрыта: сенсор канала жив, но машина не
+крутит собственные ручки. Уходя, оставляем её работающей — снимки снимаются, ряд не рвётся.
+Возврат — по разделу «не эта планета» ниже.
 
 ---
 
-## Terrain now — channel sensor
-- Format gate PROVEN. Vertical 1196 views. Same gag landscape 5. ×240.
-- Audience tab sensor ALREADY BUILT (`/api/audience` + `analytics-advisor`). It starves:
-  no snapshot history, no daily fire. Finish THAT one. No second panel.
-- Metrics lie in our favour. PLAYLIST traffic and >100% completion = our own watching.
-  Fix first: drop private/unlisted, view floor, «data still coming» flag under 3 days.
-- YouTube analytics lags ~3 days. Both hits land in reports ~24 July.
-  Nothing to calibrate before that.
+## Мера — станции, а не ролики
+
+- **Заведена станция** = направление потребовало того, чего в машине не было. Считаем.
+- **Настроена станция** = хватило параметра, канона или скилла. Не считаем.
+- Цель: у ВТОРОГО нового направления заведённых станций меньше, чем у первого.
 
 ---
 
-## Planet taken when
-Machine applies corrections ITSELF within the ceiling — theme, format, cadence, hook.
-Director approves outcomes, does not set knobs. Unplanned manual tuning: ZERO.
+## Местность сейчас — S22, говорящий человек
+
+- **Постановка кадра** — станция была ПУСТОЙ (существовала, содержания не имела). Заведена
+  25.08: паспорт кадра, валидаторы V1–V10, рендер в промпт.
+- **Речь** — штатного инструмента НЕТ. Разведана боем: клон голоса, TTS тактами, аватар.
+  Провайдеры не написаны.
+- **Липсинк** — класс моделей выбран: аватар целиком, а не правка губ.
+- **Канон реального человека** — работает. Стилевая плита S22 без байтов — дефект не починен.
 
 ---
 
-## NOT this planet (parked — do not drift)
-- VIDEO region. Hypothesis: video-gen should logically be a copy of ref-gen — and then
-  there would be no problems either? Terrain of PREVIOUS planet. Entry point on return.
-  Not fixing now.
-- Hand growth ops. Playlist projects (proven not a lever). Publish-time tuning
-  (proven not a lever). Daily manual poking.
-- Agent self-learning. Second genre. Later.
+## Планета взята, когда
+
+Новое направление проходит конвейер БЕЗ новых станций — только каноном, скиллом и
+настройкой. Заведённых станций на направление: ноль.
 
 ---
 
-*PLANET.md | «Distribution autonomy + self-correction» — Director 2026-07-21. One planet at a time.*
+## НЕ эта планета (припарковано — не дрейфовать)
+
+- **Дистрибуция и самокоррекция.** Прошлая планета, сенсор жив, ряд копится. Точка входа при
+  возврате — `docs/distribution/snapshots` и `analytics-advisor`.
+- **Автономность Полины как отдельная цель.** Она инструмент этой планеты, не планета.
+- **Второй канал, ручной рост, публикационные ручки.**
+
+---
+
+*PLANET.md | «Расширение способностей» — Директор 2026-08-25. Одна планета за раз.*
