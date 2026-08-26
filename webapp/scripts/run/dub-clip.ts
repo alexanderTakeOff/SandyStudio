@@ -91,6 +91,7 @@ export default defineTool(
       ambience: { about: 'сочинить атмосферу места ПО ВИДЕО и подмешать', default: 'yes', values: ['yes', 'no'] },
       'ambience-level': { about: 'громкость фона относительно голоса; 0,05 — «не тишина», 0,15 — двор слышен', default: String(DEFAULT_AMBIENCE_LEVEL) },
       'ambience-hint': { about: 'что должно звучать: источники, а не настроение', default: 'quiet residential courtyard, sparrows, light wind, a car passing far away' },
+      'ambience-file': { about: 'готовая атмосфера с прошлого круга (`<клип>.ambience.mp3`) — берётся как есть, БЕЗ ожидания и траты. Правишь только голос — подавай её сюда', default: '' },
     },
     env: {
       FAL_KEY: { about: 'ключ провайдера' },
@@ -140,16 +141,28 @@ export default defineTool(
 
       // 2) АТМОСФЕРА. Вход — техзадание: показываем ТОЛЬКО то, что должно
       // звучать. Верхняя полоса кадра, где говорящего рта нет ни в одном моменте.
+      //
+      // УТВЕРЖДЁННЫЙ СЛОЙ ПЕРЕЖИВАЕТ КРУГ. Атмосфера сочинялась заново при каждом
+      // вызове и стиралась вместе с временной папкой — поэтому правка ОДНОГО
+      // голоса тянула минуту ожидания и $0,05 за уже принятый фон (Директор,
+      // 27.08: «больше ничего не нужно же было менять»). Теперь она ложится
+      // рядом с изделием и подаётся обратно через `--ambience-file`.
       let ambience: string | null = null;
-      if (arg('ambience') === 'yes') {
+      const ready = arg('ambience-file').trim() ? resolve(process.cwd(), arg('ambience-file')) : null;
+      if (ready) {
+        if (!existsSync(ready)) throw new Error(`готовой атмосферы нет: ${ready}`);
+        ambience = ready;
+        console.log(`атмосфера взята готовой: ${ready} · $0`);
+      } else if (arg('ambience') === 'yes') {
         const strip = join(work, 'strip.mp4');
         await runFfmpeg(['-v', 'error', '-y', '-i', clip, '-vf', 'crop=iw:ih*0.22:0:0', '-an', strip]);
         const ambienceClip = join(work, 'ambience.mp4');
         await runJob(AMBIENCE_MODEL, { video_url: await upload(strip, 'strip.mp4', 'video/mp4', key), prompt: arg('ambience-hint') }, key, /\.(mp4|wav|mp3)/, ambienceClip);
-        ambience = join(work, 'ambience.mp3');
+        ambience = `${outPath}.ambience.mp3`;
         await runFfmpeg(['-v', 'error', '-y', '-i', ambienceClip, '-vn', '-c:a', 'libmp3lame', '-q:a', '2', ambience]);
         spent += AMBIENCE_COST;
-        console.log(`атмосфера сочинена по видео · $${AMBIENCE_COST.toFixed(2)}`);
+        console.log(`атмосфера сочинена по видео · $${AMBIENCE_COST.toFixed(2)} · сохранена: ${ambience}`);
+        console.log(`следующий круг по голосу: --ambience-file ${ambience} — без ожидания и без траты`);
       }
 
       // 3) СВЕДЕНИЕ. Без loudnorm/48k/стерео файл «есть, но на телефоне молчит».
