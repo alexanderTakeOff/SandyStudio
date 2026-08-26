@@ -494,7 +494,7 @@ async function handleCommand(state: BotState, chatId: number, text: string): Pro
       return true;
     case '/e':
     case '/эпизод': {
-      const episodeArg = arg || firstCommandArgument(text);
+      const episodeArg = glued.arg || firstCommandArgument(text);
       if (!episodeArg) return await sendMessage(chatId, 'Какой эпизод? Напр. /e SS-S20-E08').then(() => true);
       const ep = await episodeByCode(episodeArg);
       if (!ep) return await sendMessage(chatId, `Эпизода «${episodeArg}» не нашёл.`).then(() => true);

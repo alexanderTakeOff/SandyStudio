@@ -19,7 +19,11 @@ describe('Telegram command routing', () => {
 
   it('wires /e to the first-token helper', () => {
     const source = readFileSync(resolve(process.cwd(), 'scripts', 'telegram-bot.ts'), 'utf8');
-    expect(source).toContain('const episodeArg = firstCommandArgument(text)');
+    // Слитная форма `/e02` даёт аргумент из САМОЙ команды; всё остальное берётся
+    // ПЕРВЫМ токеном. Склейка `rest.join()` тут запрещена: она проглотила бы
+    // пересланную историю, ради чего сторож и стоит.
+    expect(source).toContain('const episodeArg = glued.arg || firstCommandArgument(text)');
+    expect(source).not.toContain('const episodeArg = arg ||');
     expect(source).toContain('episodeByCode(episodeArg)');
   });
 });
