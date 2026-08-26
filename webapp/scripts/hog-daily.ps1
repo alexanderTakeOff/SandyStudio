@@ -16,7 +16,14 @@ $OutputEncoding=New-Object Text.UTF8Encoding $false
 # launcher works on any machine/path (desktop C:\SandyStudio, laptop, ...).
 $repo=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $date=Get-Date -Format 'yyyy-MM-dd'
-$dayRoot=Join-Path $repo "docs\distribution\reports\$date"; New-Item -ItemType Directory -Force $dayRoot|Out-Null
+# ОТЧЁТЫ И ЛОГИ — НЕ В РЕПОЗИТОРИЙ (Директор 15.08: «чтобы при росте веток не рос мусор»).
+# html/md регенерируются из снимков и всё равно уезжают в gist, лог одноразовый: 2 МБ за три
+# недели против 815 КБ у снимков, и каждое дерево множило бы их копией. Место одно и вне git —
+# по образцу FILMS\_media_cache. Переопределяется $env:DIST_REPORTS_DIR.
+# СНИМКИ остаются в docs\distribution\snapshots и коммитятся: они малы, невосстановимы и
+# несут поля, которых нет в БД (показы, CTR, средний процент досмотра).
+$reportsRoot=if ($env:DIST_REPORTS_DIR) { $env:DIST_REPORTS_DIR } else { Join-Path $repo 'FILMS\_distribution\reports' }
+$dayRoot=Join-Path $reportsRoot $date; New-Item -ItemType Directory -Force $dayRoot|Out-Null
 $log=Join-Path $dayRoot "run-$(Get-Date -Format 'HHmm').log"
 function L { $input | Out-File -FilePath $log -Append -Encoding utf8 }
 "[hog] $(Get-Date -Format o) START" | L
@@ -37,7 +44,13 @@ foreach ($ch in $channels) {
   $key=$ch.key
   "[hog] === channel $key ($($ch.name)) ===" | L
   $out=Join-Path $dayRoot $key; New-Item -ItemType Directory -Force $out|Out-Null
-  $outRel="docs/distribution/reports/$date/$key"
+  # Путь для мозга ВЫВОДИТСЯ из $out, а не пишется вторым литералом: два места для одного
+  # пути — это и есть расхождение, которое однажды тихо разъедет отчёт и его читателя.
+  # Считаем от $repo ЯВНО: `Resolve-Path -Relative` считал бы от текущего каталога, а
+  # Push-Location $repo происходит ниже по коду.
+  $outRel=if ($out.StartsWith($repo, [StringComparison]::OrdinalIgnoreCase)) {
+    $out.Substring($repo.Length).TrimStart('\','/').Replace('\','/')
+  } else { $out.Replace('\','/') }
 
   # 3. Brain run for THIS channel: placeholders -> concrete values.
   $p=$tpl.Replace('{{CHANNEL_KEY}}',$key).Replace('{{CHANNEL_NAME}}',$ch.name).Replace('{{OUT_DIR}}',$outRel)

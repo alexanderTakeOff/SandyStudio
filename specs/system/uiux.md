@@ -404,6 +404,14 @@ appearance.theme
 appearance.ambientBackground
 ```
 
+### 7.4 Telegram model control parity
+
+The Telegram controller exposes the same global Polina model setting as
+Settings → Providers. `/model` renders the five executable subscription choices
+as inline buttons, at most two per row; `/model terra` is the shortcut form.
+It must show selected vs last-executed separately and state that a change applies
+to the next turn. Telegram never owns a second provider configuration.
+
 ---
 
 ## 8. Studio Shell

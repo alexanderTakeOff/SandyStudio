@@ -11,7 +11,13 @@ import { defineTool } from './_tool';
 import { traceInStudio, shotFromFilename } from './_asset';
 import { sb } from './_env';
 import { buildStitchEdl } from '../../lib/api/stitch-edl';
-import { buildConcatList, buildMusicAudioFilter, type ConcatShotEntry } from '../../lib/providers/ffmpeg-stitch';
+import {
+  buildConcatList,
+  buildMusicAudioFilter,
+  assertStreamableDelivery,
+  DELIVERY_MUX_ARGS,
+  type ConcatShotEntry,
+} from '../../lib/providers/ffmpeg-stitch';
 import { cachedFileIfPresent } from '../../lib/media-cache';
 import type { AudioTrack } from '../../lib/api/animatic-shotlist';
 
@@ -191,7 +197,7 @@ export default defineTool(
     const args: string[] = ['-f', 'concat', '-safe', '0', '-i', listPath];
     // Короткий трек зацикливается, иначе `-shortest` обрежет КАТ по длине музыки.
     if (musicPath) args.push('-stream_loop', '-1', '-i', musicPath);
-    args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '19', '-pix_fmt', 'yuv420p', '-r', '24');
+    args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '19', '-r', '24');
     if (musicPath) {
       args.push('-map', '0:v', '-map', '1:a');
       if (audioFilter) args.push('-filter:a', audioFilter);
@@ -199,8 +205,18 @@ export default defineTool(
     } else {
       args.push('-an');
     }
+    // ЗАКОН ДОСТАВКИ БЕРЁТСЯ ИЗ ОДНОГО МЕСТА (13.08). Здесь стоял свой список
+    // флагов, и в нём не было `+faststart`: с 01.08 по 13.08 каты выходили с
+    // индексом `moov` в конце файла, YouTube помечал их `nonStreamableMov`, и
+    // Shorts-полка не раздала НИ ОДИН — пять роликов по 0–11 просмотров против
+    // 700–1500 у собранных агентским сборщиком. Список склейки и звука этот
+    // инструмент уже брал из общего модуля; список вывода — нет.
+    args.push(...DELIVERY_MUX_ARGS);
     args.push(out);
     ff(args);
+
+    // Приёмка: негодный к раздаче кат не должен считаться собранным.
+    await assertStreamableDelivery(out);
 
     rmSync(work, { recursive: true, force: true });
     console.log(`OK ${out}`);

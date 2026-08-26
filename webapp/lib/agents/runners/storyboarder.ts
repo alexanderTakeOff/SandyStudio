@@ -401,6 +401,29 @@ function buildUserMessage(args: {
     '        {',
     `          "shot_id": "${epShort}-SH01",`,
     '          "camera_angle": "wide" | "medium" | "medium_wide" | "close_up" | "extreme_close_up" | "over_shoulder" | "top_down" | "low_angle" | "dutch",',
+    // ПОСТАНОВОЧНЫЙ ПАСПОРТ (2026-08-25, Директор q14/q15). До этого крупность и
+    // ракурс жили в ОДНОМ поле camera_angle, а дистанции не было вовсе — модель
+    // добирала её из статистики подписей (телефон с вытянутой руки) и отдавала
+    // «селфи с трёх метров». Термины: specs/glossary.md §11; ремесло: скилл shot-staging.
+    '          "shot_size": "ECU" | "BCU" | "CU" | "MCU" | "MS" | "MLS" | "FS" | "LS" | "ELS",',
+    '          "crop_line": "<anatomical landmark BETWEEN joints where the bottom edge falls: mid_chest | mid_thigh | mid_forearm | above_knee | full_body. NEVER on a joint (wrist/elbow/knee/ankle/neck/chin/waist) — that reads as amputation.>",',
+    '          "subject_distance_m": <number — camera-to-subject distance in metres. MANDATORY: framing without distance is an undefined shot. Portrait ≈ 1.5-2.5, reportage ≈ 0.6-1, selfie ≤ 0.6.>,',
+    '          "lens_equiv_mm": <number — 35mm-equivalent focal length. 18-24 ultrawide, 35 reportage, 50 normal, 85 portrait, 135+ tele.>,',
+    '          "lens_look": "ultrawide" | "wide" | "normal" | "portrait_tele" | "tele" | "macro",',
+    '          "rig": "tripod" | "handheld" | "gimbal" | "crane" | "drone" | "selfie" | "selfie_stick" | "pov" | "body_cam",',
+    '          "camera_height": "ground" | "hip" | "chest" | "eye_level" | "high" | "overhead",',
+    '          "camera_angle_deg": <number — tilt of the optical axis: negative looks UP at the subject, positive looks DOWN, 0 is level. Height and tilt are INDEPENDENT: a hip-height camera with a level lens is NOT a low angle.>,',
+    '          "dutch_deg": <number — horizon tilt, 0 unless the shot is deliberately canted>,',
+    '          "camera_move": { "type": "static" | "pan" | "tilt" | "dolly" | "truck" | "pedestal" | "arc" | "crane" | "whip" | "tracking", "direction": "<left|right|in|out|up|down or null>", "speed": "<slow|steady|fast or null>", "start_on": "<the event the move waits for, e.g. \\"he lowers the paper\\", or null>", "degrees": <arc only: degrees of travel, ≤30 per 5 seconds, else null> },',
+    '          "subject_position": "<where the subject sits on the thirds grid: left_third | centre | right_third>",',
+    '          "looking_direction": "screen_left" | "screen_right" | "to_camera" | "away",',
+    '          "axis_side": "<A or B — which side of the action axis the camera stands on. MUST stay the same for every shot of one scene, otherwise the characters swap sides between cuts (180-degree rule). Models do NOT hold this on their own.>",',
+    '          "depth_layers": { "fg": "<what is in the foreground, or null>", "mg": "<midground — usually the subject>", "bg": "<background>" },',
+    '          "key": { "direction": "<where the key light comes from, e.g. camera_left_45 | window_right | back_left. NEVER on_axis when a face is in frame — that gives a flat, washed-out face.>", "quality": "hard" | "soft", "pattern": "butterfly" | "loop" | "rembrandt" | "split" | "none", "rim": <boolean — back/rim light separating the figure from the background> },',
+    '          "contrast": "high" | "medium" | "flat",',
+    '          "color_temp": "<tungsten_warm | daylight_cool | mixed | golden_hour | blue_hour>",',
+    '          "dof": "shallow" | "medium" | "deep",',
+    '          "focus_subject": "<what exactly is sharpest — MANDATORY when dof is shallow, e.g. \\"his eyes\\">",',
     '          "shot_role": "establishing" | "action" | "reaction" | "gag" | "punchline" | "transition",',
     hasCanon
       ? `          "location": { "slug": "<one of: ${locationSlugs.join(', ') || '(none)'}>", "sub_area": "<optional sub-area within that location, e.g. \\"entrance\\" or \\"window table\\". Use null if shot covers the whole location.>" },`
@@ -446,6 +469,15 @@ function buildUserMessage(args: {
     '```',
     '',
     'Hard rules (storyboarder@v2):',
+    // Постановочные законы (Директор 2026-08-25). Каждый оплачен браком: см. скилл shot-staging.
+    '- STAGING IS NOT OPTIONAL. Every shot carries the full staging passport. A field you leave out is not "unspecified" — it is a decision handed to the model, and the model defaults to the statistics of its captions: a face close-up becomes a phone selfie held at arm\'s length. Silence about distance IS an order for selfie geometry.',
+    '- SIZE AND ANGLE ARE INDEPENDENT AXES. `shot_size` says how much of the body is in frame; `camera_height` + `camera_angle_deg` say where the camera stands and where it points. Do not encode one in the other.',
+    '- FRAMING WITHOUT DISTANCE IS AN UNDEFINED SHOT. `subject_distance_m` and `lens_equiv_mm` must be physically consistent with `shot_size`: perspective is set by camera POSITION alone, the lens only picks how much of the scene that position yields. The same medium close-up at 0.5 m and at 2 m is two different faces — at 40-60 cm the nose base widens by roughly a third.',
+    '- SELFIE IS A RIG, NOT A LOOK. `rig: selfie|selfie_stick|pov|body_cam` requires a wide/ultrawide `lens_look` and a distance no greater than 1.2 m (an arm is 0.6 m, a stick 1.2 m). Conversely, any distance under 0.8 m REQUIRES one of those rigs — otherwise the shot silently acquires selfie geometry nobody ordered.',
+    '- ONE CAMERA MOVE PER SHOT. Two moves in one shot produce a confused, warping result. If the beat needs two, that is two shots — or one move gated on an event via `camera_move.start_on`. An `arc` travelling more than about 30 degrees per 5 seconds warps.',
+    '- THE AXIS IS YOUR JOB, NOT THE MODEL\'S. `axis_side` must be identical for every shot of one scene, and `looking_direction` must be stated on every shot. Each frame is generated independently and remembers nothing of its neighbours; if you do not carry the axis, the characters swap sides between cuts.',
+    '- LIGHT HAS A DIRECTION OR IT HAS NOTHING. `key.direction` must never be on-axis when a face is in frame: a source on the camera axis casts no shadow, and the face reads flat, pale and lifeless. State direction, quality and pattern; add `rim: true` whenever the figure would otherwise merge into the background. Never write mood words ("cinematic lighting") — they set nothing and the model averages to the flat default.',
+    '- SHALLOW FOCUS NAMES ITS SUBJECT. When `dof` is shallow, `focus_subject` says exactly what is sharpest, otherwise the sharp plane lands somewhere nobody chose.',
     `- Exactly ${actCount} act${actCount === 1 ? '' : 's'} in \`acts[]\` — matching the ${actCount} acts of the script above. No more, no fewer. Put each shot in its correct act object (an Act-4 shot belongs in the act:4 object, never folded into act:3).`,
     `- Every shot needs a unique \`shot_id\` of the form \`<series>-<episode>-SH<NN>\` — exactly like \`${epShort}-SH01\`. Number SH continuously across the WHOLE episode in shot order (SH01, SH02, SH03 …), never resetting per scene. Do NOT put a studio prefix, act, or scene in the shot_id — act lives in the act object only.`,
     hasCanon

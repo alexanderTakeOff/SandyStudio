@@ -1027,11 +1027,16 @@ export function ConciergePanel() {
           context_tokens?: number;
           context_limit?: number;
           model?: string;
+          provider?: string;
         };
         setTurnBusySince(mind.busy?.started_at ?? null);
         // ИСПОЛНЕННОЕ главнее выбранного: показываем модель последнего хода.
         if (typeof mind.model === 'string' && mind.model) {
-          setModelLabel(`Подписка · ${mind.model}`);
+          setModelLabel(
+            mind.provider === 'codex'
+              ? `Подписка OpenAI · ${mind.model}`
+              : `Подписка · ${mind.model}`,
+          );
         }
         setContextTokens(typeof mind.context_tokens === 'number' ? mind.context_tokens : null);
         if (typeof mind.context_limit === 'number' && mind.context_limit > 0) {

@@ -183,7 +183,7 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
               // Delete available for non-LOCKED, non-APPROVED. Director can
               // freely clear drafts/reviews/revisions/rejected — protects
               // canonical APPROVED/LOCKED from accidental loss. Backend
-              // enforces same scope via DELETABLE_STATUSES in /api/assets/[id].
+              // enforces same scope via PROTECTED_STATUSES in /api/assets/[id].
               if (!isLocked && asset.status !== 'APPROVED') {
                 items.push({ separator: true });
                 items.push({

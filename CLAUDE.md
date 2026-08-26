@@ -130,7 +130,14 @@ Full mapping (each agent → assigned ECC skills/agents/commands) → `docs/CLAU
 
 ### Custom SandyStudio skills (project-local)
 
-`C:\SandyStudio\.claude\skills\`. Two skills:
+`.claude/skills/` — десятки скиллов, и **список здесь не ведётся**: ручной перечень протухает
+(этот перечень стоял на двух скиллах весенней эпохи, пока их было под сорок). Скоуп каждого
+объявлен в его собственном `applies_when`, и агенту он подаётся загрузчиком, а не памятью.
+
+Входные точки, которые нужно знать по имени:
+- **`ss-run` — МАРШРУТ ПРОИЗВОДСТВА.** Станции конвейера, чем каждая запускается, чем
+  держится и что рядом лежит, но инструментом не является. Читается ПЕРЕД прогоном (§9 п.5.7).
+- **`shot-staging`** — постановка кадра: паспорт кадра, валидаторы V1–V9. Термины — глоссарий §11.
 - `sandystudio-archivist` (owner `EXEC-ARCH`) — naming convention, status transitions, asset registry
 - `episode-serialization` (owner `ART-CONT`) — 26-episode long-arc continuity
 
@@ -276,10 +283,25 @@ When starting a new Claude Code session in this project:
    Hard cap 80 lines, enforced by `topic-dossier-guard.cjs` — the cap **is** the deletion mechanism:
    to add a finding to a full dossier, remove a stale one. Dated claims that stopped being true are
    deleted, not accumulated.
+5.7 **МАРШРУТ ПРОИЗВОДСТВА — `.claude/skills/ss-run`.** Прежде чем тронуть конвейер —
+   завести эпизод, снять кадр, оживить его, собрать, выпустить — открыть маршрут и найти
+   свою станцию в таблице §1. Он отвечает на «какой штатный инструмент когда брать», и
+   каждая его строка оплачена браком прошлых прогонов. **Порядок станций — не рекомендация:**
+   канон серии отвечает на «кто это», референс эпизода (`IMG-episode_ref`) — на «что снято»,
+   и видео оживляет РЕФЕРЕНС, а не канон-плиту. Подмена соседней станцией отдаёт постановку
+   модели (оплачено 2026-08-25: анимировали канон напрямую и трое суток не могли получить
+   заказанный кадр). Заметка о разовом смоуке внутри маршрута маршрутом НЕ является — путь
+   задаёт таблица станций.
 6. Set system mode to `===1===` ANALYTICS MODE (default — read-only)
 7. **Apply §12 Ritual 2** — `Date:` sanity check on PLAN.md AND `PLANET.md` (flag Director if > 3 days stale)
 8. Report current planet + next step to Director (planet from `PLANET.md`, live state from PLAN.md `## CURRENT STATE`)
-9. Ask the Director: "What are we working on today?" — and check the ask against the current planet before executing.
+9. **НЕ спрашивать «что дальше» — ПРЕДЪЯВИТЬ следующий шаг** (Директор, 2026-08-25). Следующий
+   шаг ВЫВОДИТСЯ, а не запрашивается: последний лист сессии (`Exact Next Step`) → `PLAN.md
+   Next:` → лист приёмки текущего изделия → `docs/plans/paradigm-run-*`. Свести их, назвать
+   шаг одной строкой со ссылкой на источник — и НАЧАТЬ. Вопрос Директору задаётся, только
+   если шаг упирается в его гейт (`===5===` · деньги · публикация · LOCKED · выбор планеты)
+   или если источники противоречат друг другу. «Что делаем сегодня?» — перекладывание работы:
+   ответ уже записан в планах, его надо прочитать.
 10. Identify which agent role is needed and read that agent's file in `agents/`
 11. Proceed with task — write files only if the Director activates `===5===`
 

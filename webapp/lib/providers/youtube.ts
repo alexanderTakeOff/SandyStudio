@@ -167,7 +167,16 @@ export async function getVideoDetails(
   if (!res.ok) {
     throw new YouTubeError(`getVideoDetails failed (${res.status})`, res.status, (await res.text()).slice(0, 400));
   }
-  const json = (await res.json()) as { items?: Array<{ snippet?: any; status?: any }> };
+  // Читаем ровно те поля, что возвращаем ниже: `any` здесь прятал бы опечатку в имени.
+  const json = (await res.json()) as {
+    items?: Array<{
+      snippet?: {
+        title?: string;
+        thumbnails?: Record<string, { url?: string; width?: number; height?: number }>;
+      };
+      status?: { privacyStatus?: string; uploadStatus?: string; madeForKids?: boolean };
+    }>;
+  };
   const item = json.items?.[0];
   // Пустой ответ — ОТКАЗ, а не заметка: чужой id иначе читается как чистая проверка.
   if (!item) throw new YouTubeError(`no such video for this channel: ${videoId}`);
