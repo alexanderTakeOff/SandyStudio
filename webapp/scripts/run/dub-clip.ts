@@ -90,6 +90,10 @@ export default defineTool(
       lipsync: { about: 'двигать губы под дорожку. `no` — просто подложить звук', default: 'yes', values: ['yes', 'no'] },
       ambience: { about: 'сочинить атмосферу места ПО ВИДЕО и подмешать', default: 'yes', values: ['yes', 'no'] },
       'ambience-level': { about: 'громкость фона относительно голоса; 0,05 — «не тишина», 0,15 — двор слышен', default: String(DEFAULT_AMBIENCE_LEVEL) },
+      'ambience-file': {
+        about: 'готовая атмосфера (mp3) — переиспользовать вместо генерации. Фон места не меняется от правки реплики, а его пересочинение стоит минуты',
+        default: '',
+      },
       'ambience-hint': { about: 'что должно звучать: источники, а не настроение', default: 'quiet residential courtyard, sparrows, light wind, a car passing far away' },
     },
     env: {
@@ -141,7 +145,15 @@ export default defineTool(
       // 2) АТМОСФЕРА. Вход — техзадание: показываем ТОЛЬКО то, что должно
       // звучать. Верхняя полоса кадра, где говорящего рта нет ни в одном моменте.
       let ambience: string | null = null;
-      if (arg('ambience') === 'yes') {
+      const reuse = arg('ambience-file').trim();
+      if (reuse) {
+        // Атмосфера места от правки РЕПЛИКИ не меняется. Пересочинять её на
+        // каждой итерации — минуты ожидания за один и тот же результат
+        // (Директор, 27.08: «первый раз она сделала за минуту, теперь десять»).
+        ambience = resolve(process.cwd(), reuse);
+        if (!existsSync(ambience)) throw new Error(`атмосферы нет: ${ambience}`);
+        console.log(`атмосфера взята готовой: ${ambience} · $0`);
+      } else if (arg('ambience') === 'yes') {
         const strip = join(work, 'strip.mp4');
         await runFfmpeg(['-v', 'error', '-y', '-i', clip, '-vf', 'crop=iw:ih*0.22:0:0', '-an', strip]);
         const ambienceClip = join(work, 'ambience.mp4');
@@ -149,7 +161,12 @@ export default defineTool(
         ambience = join(work, 'ambience.mp3');
         await runFfmpeg(['-v', 'error', '-y', '-i', ambienceClip, '-vn', '-c:a', 'libmp3lame', '-q:a', '2', ambience]);
         spent += AMBIENCE_COST;
-        console.log(`атмосфера сочинена по видео · $${AMBIENCE_COST.toFixed(2)}`);
+        // Кладём РЯДОМ с результатом: следующая правка реплики возьмёт её
+        // готовой через --ambience-file и не будет ждать провайдера.
+        const keep = outPath.replace(/.[^.]+$/, '.ambience.mp3');
+        await runFfmpeg(['-v', 'error', '-y', '-i', ambience, '-c', 'copy', keep]);
+        console.log(`атмосфера сочинена по видео · ${AMBIENCE_COST.toFixed(2)} · сохранена: ${keep}`);
+        console.log(`  следующая правка реплики: --ambience-file ${keep} (бесплатно и мгновенно)`);
       }
 
       // 3) СВЕДЕНИЕ. Без loudnorm/48k/стерео файл «есть, но на телефоне молчит».
