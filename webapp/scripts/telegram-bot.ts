@@ -22,7 +22,13 @@ import { sb } from './run/_env';
 import { createThread, persistTurn, resolveOpenThreadId } from '../lib/concierge/threads';
 import { ensureCachedMedia } from '../lib/media-cache';
 import { keyboardForText } from '../lib/telegram/questions';
-import { firstCommandArgument } from '../lib/telegram/commands';
+import { firstCommandArgument, splitGluedCommand } from '../lib/telegram/commands';
+import {
+  DEFAULT_GENERATION_CONFIG,
+  parseCeiling,
+  renderApproved,
+  renderLimits,
+} from '../lib/telegram/limits';
 import {
   getConciergeProviderOverride,
   setConciergeProviderOverride,
@@ -48,6 +54,7 @@ import {
   sendMessage,
   type TgMessage,
   type TgUpdate,
+  sendTyping,
 } from '../lib/telegram/api';
 
 const STATE_FILE = resolve(process.cwd(), '..', 'FILMS', '_run', 'telegram-bot-state.json');
@@ -66,6 +73,8 @@ interface BotState {
   /** Метка последней доставленной реплики и последнего доставленного изделия. */
   lastTurnAt: string;
   lastAssetAt: string;
+  /** Знали ли мы на прошлом тике, что ум ведёт ход — чтобы сказать о начале и конце ровно один раз. */
+  mindBusy?: boolean;
 }
 
 function loadState(): BotState {
@@ -441,13 +450,43 @@ const HELP = [
   '',
   'Текст без команды уходит Полине. Кнопки под её ответом — это твои коды ответов.',
   '',
+  '/лимит — показать лимиты эпизода · /лимит 25 — утвердить потолок и открыть гейт траты.',
   'Медиа: шли что угодно — набросок стилусом, фото, скриншот, видео, трек.',
   'Кодов и подписей-слагов не надо: скажи словами, что это и к чему, а оформит Полина.',
 ].join('\n');
 
+/**
+ * Показать, что ум РАБОТАЕТ. Директор, 26.08: «а то как глухой» — ход идёт
+ * минутами, и всё это время пульт молчал; отличить работу от упавшего моста
+ * было нечем.
+ *
+ * Три сигнала, потому что один не покрывает: «печатает…» в шапке живёт пять
+ * секунд и виден только пока смотришь; строка о начале и конце остаётся в
+ * ленте и читается позже.
+ */
+async function signalMindWork(state: BotState, chatId: number): Promise<void> {
+  const threadId = await currentThreadId(state);
+  if (!threadId) return;
+  const { data } = await sb
+    .from('concierge_threads')
+    .select('mind_session')
+    .eq('id', threadId)
+    .maybeSingle();
+  const busy = Boolean((data as { mind_session?: { busy?: unknown } } | null)?.mind_session?.busy);
+  if (busy) await sendTyping(chatId);
+  if (busy === Boolean(state.mindBusy)) return;
+  state.mindBusy = busy;
+  saveState(state);
+  await sendMessage(chatId, busy ? '⏳ Полина взялась за ход…' : '✅ Полина закончила ход.');
+}
+
 async function handleCommand(state: BotState, chatId: number, text: string): Promise<boolean> {
-  const [cmd, ...rest] = text.trim().split(/\s+/);
-  const arg = rest.join(' ');
+  const [rawCmd, ...rest] = text.trim().split(/\s+/);
+  // `/e02` с телефона — та же команда, что `/e 02`: пробел на телефонной
+  // клавиатуре стоит лишнего движения, и его отсутствие не повод молчать.
+  const glued = splitGluedCommand(rawCmd);
+  const cmd = glued.cmd;
+  const arg = [glued.arg, ...rest].filter(Boolean).join(' ').trim();
   switch (cmd.toLowerCase().replace(/@.*$/, '')) {
     case '/start':
     case '/help':
@@ -455,7 +494,7 @@ async function handleCommand(state: BotState, chatId: number, text: string): Pro
       return true;
     case '/e':
     case '/эпизод': {
-      const episodeArg = firstCommandArgument(text);
+      const episodeArg = glued.arg || firstCommandArgument(text);
       if (!episodeArg) return await sendMessage(chatId, 'Какой эпизод? Напр. /e SS-S20-E08').then(() => true);
       const ep = await episodeByCode(episodeArg);
       if (!ep) return await sendMessage(chatId, `Эпизода «${episodeArg}» не нашёл.`).then(() => true);
@@ -509,6 +548,66 @@ async function handleCommand(state: BotState, chatId: number, text: string): Pro
         return true;
       }
       await switchModel(state, chatId, choice);
+      return true;
+    }
+    case '/лимит':
+    case '/limit': {
+      // Гейт траты требует ТРЁХ вещей разом; утверждение, закрывающее одну из
+      // трёх, работу не откроет — Директор нажмёт и уйдёт, а она встанет.
+      const f = await followedEntity(state, chatId);
+      if (!f?.episodeId) return await sendMessage(chatId, f ? `${f.code} · это сериал, эпизод не выбран` : NO_PLACE).then(() => true);
+      const { data: row } = await sb
+        .from('episodes')
+        .select('episode_code,budget_ceiling,metadata')
+        .eq('id', f.episodeId)
+        .maybeSingle();
+      const ep = row as { episode_code: string; budget_ceiling: number | null; metadata: Record<string, unknown> | null } | null;
+      if (!ep) return await sendMessage(chatId, 'Эпизод пропал из базы.').then(() => true);
+      const meta = (ep.metadata ?? {}) as Record<string, unknown>;
+      const { data: ledger } = await sb.from('budget_log').select('cost_usd').eq('episode_id', f.episodeId);
+      const spent = ((ledger ?? []) as { cost_usd: number | string }[]).reduce((a, r) => a + Number(r.cost_usd ?? 0), 0);
+
+      if (!arg) {
+        await sendMessage(chatId, renderLimits({
+          episodeCode: ep.episode_code,
+          ceiling: ep.budget_ceiling === null ? null : Number(ep.budget_ceiling),
+          spent,
+          approved: meta.budget_approved === true,
+          hasGenerationConfig: Boolean(meta.generation_config),
+        }));
+        return true;
+      }
+
+      const ceiling = parseCeiling(arg);
+      if (ceiling === null) {
+        await sendMessage(chatId, 'Сумму не разобрал. Напр. /лимит 25 — доллары, до 500.');
+        return true;
+      }
+      const addConfig = !meta.generation_config;
+      const nextMeta = {
+        ...meta,
+        budget_approved: true,
+        budget_approved_via: 'telegram',
+        ...(addConfig ? { generation_config: DEFAULT_GENERATION_CONFIG } : {}),
+      };
+      const { error: upErr } = await sb
+        .from('episodes')
+        .update({ budget_ceiling: ceiling, metadata: nextMeta })
+        .eq('id', f.episodeId);
+      if (upErr) {
+        await sendMessage(chatId, `Не записал: ${upErr.message}`);
+        return true;
+      }
+      await logEvent(sb as never, {
+        episode_id: f.episodeId,
+        event_type: 'approval_granted',
+        title: `Директор утвердил потолок $${ceiling.toFixed(2)} с пульта`,
+        actor: 'Director',
+        metadata: { source: 'telegram', ceiling, generation_config_defaulted: addConfig },
+      });
+      // Ум должен УЗНАТЬ, что гейт открылся, а не ждать следующего слова.
+      await sayToMind(state, `(Директор утвердил лимит: потолок $${ceiling.toFixed(2)}. Гейт траты открыт — продолжай.)`);
+      await sendMessage(chatId, renderApproved(ep.episode_code, ceiling, addConfig));
       return true;
     }
     case '/стоп':
@@ -609,6 +708,7 @@ async function main(): Promise<void> {
     const chats = allowedChats();
     if (chats.length === 0) continue;
     try {
+      await signalMindWork(state, chats[0]);
       await pumpStudio(state, chats[0]);
     } catch (e) {
       console.error('студия:', e instanceof Error ? e.message : e);
