@@ -55,38 +55,75 @@ function frameSize(src: string): { w: number; h: number } {
 const even = (n: number): number => (n % 2 === 0 ? n : n + 1);
 
 /**
- * Дотянуть кадр до аспекта рендера, доливая недостающее его же краевым цветом.
- * Добор идёт по ОДНОЙ оси — по той, которой не хватает:
- *   · кадр уже целевого — растёт ширина, симметрично с двух сторон;
- *   · кадр шире целевого — растёт высота, СВЕРХУ: низ кадра может нести пол или
- *     опору, верх в наших сценах пустой. Так же вело себя прежнее зашитое
- *     `pad=1024:1820:0:284`, и на вертикальном кадре 1024×1536 результат тот же
- *     до пикселя — правка не меняет уже снятые эпизоды.
+ * Доля кадра, которую можно срезать ради аспекта. Выше неё режется содержание
+ * (горизонтальный кадр в вертикальный рендер теряет 62% ширины), и тогда
+ * дешевле долить полосу, чем выбросить сцену.
  */
-function padToAspect(src: string, dst: string, aspect: string): void {
+const MAX_CROP_SHARE = 0.25;
+
+/**
+ * Привести кадр к аспекту рендера. ПОДРЕЗКОЙ, пока она дешёвая; доливом — когда
+ * подрезка съела бы содержание.
+ *
+ * ПОЧЕМУ ПОДРЕЗКА ГЛАВНЕЕ (25.08, оплачено двумя дефектами разом). Долив был
+ * единственным путём, и на кадре 1024×1536 при рендере 9:16 он добавлял 284
+ * пикселя заливки СВЕРХУ. Полоса не «служебная» — она уезжает в модель и
+ * остаётся в готовом клипе серым полем над головой (Директор увидел его дважды).
+ * Хуже того, герой после долива занимает 84% кадра вместо всего: модель
+ * перерисовывает лицо мельче, и оно ПЛЫВЁТ. Одна причина, два дефекта.
+ *
+ * Подрезка 1024×1536 → 864×1536 даёт ровно 9:16 без полос, а лицо становится
+ * крупнее в поле кадра. Цена — 15,6% ширины по краям, где у вертикального кадра
+ * лежит фон, а не герой.
+ */
+function fitToAspect(src: string, dst: string, aspect: string): void {
   const [aw, ah] = aspect.split(':').map(Number);
   if (!aw || !ah) throw new Error(`не разобрал аспект рендера: "${aspect}"`);
   const { w, h } = frameSize(src);
   const target = aw / ah;
+  const ratio = w / h;
 
-  let W = w;
-  let H = h;
-  let x = 0;
-  let y = 0;
-  if (w / h < target) {
+  if (Math.abs(ratio - target) < 0.001) {
+    execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', src, '-c', 'copy', dst]);
+    console.log(`аспект уже ${aspect}, кадр не тронут`);
+    return;
+  }
+
+  // Сколько срезать, если идти подрезкой: режется та ось, которой ИЗБЫТОК.
+  const cropW = ratio > target ? even(Math.round(h * target)) : w;
+  const cropH = ratio > target ? h : even(Math.round(w / target));
+  const share = ratio > target ? 1 - cropW / w : 1 - cropH / h;
+
+  if (share <= MAX_CROP_SHARE) {
+    const x = Math.floor((w - cropW) / 2);
+    const y = Math.floor((h - cropH) / 2);
+    execFileSync('ffmpeg', [
+      '-v', 'error', '-y', '-i', src,
+      '-vf', `crop=${cropW}:${cropH}:${x}:${y}`,
+      dst,
+    ]);
+    console.log(`crop ${w}×${h} → ${cropW}×${cropH} (${aspect}), срезано ${(share * 100).toFixed(1)}%`);
+    return;
+  }
+
+  // Подрезка съела бы сцену — доливаем краевым цветом, как раньше.
+  let W = w, H = h, x = 0, y = 0;
+  if (ratio < target) {
     W = even(Math.round(h * target));
     x = Math.floor((W - w) / 2);
-  } else if (w / h > target) {
+  } else {
     H = even(Math.round(w / target));
     y = H - h;
   }
-
   execFileSync('ffmpeg', [
     '-v', 'error', '-y', '-i', src,
     '-vf', `pad=${W}:${H}:${x}:${y}:color=${edgeColour(src)}`,
     dst,
   ]);
-  console.log(`pad ${w}×${h} → ${W}×${H} (${aspect}), смещение ${x},${y}`);
+  console.log(
+    `pad ${w}×${h} → ${W}×${H} (${aspect}), смещение ${x},${y} — ` +
+    `подрезка срезала бы ${(share * 100).toFixed(0)}% и выбросила бы сцену`,
+  );
 }
 
 export default defineTool(
@@ -205,9 +242,9 @@ export default defineTool(
 
     const srcAbs = resolve(process.cwd(), arg('frame'));
     if (!existsSync(srcAbs)) throw new Error(`frame not found: ${srcAbs}`);
-    const paddedAbs = srcAbs.replace(/\.png$/, '.padded.png');
-    padToAspect(srcAbs, paddedAbs, effectiveAspect);
-    console.log(`padded → ${paddedAbs}`);
+    const paddedAbs = srcAbs.replace(/\.png$/, '.fitted.png');
+    fitToAspect(srcAbs, paddedAbs, effectiveAspect);
+    console.log(`подогнан под аспект → ${paddedAbs}`);
 
     const prompt = readFileSync(resolve(process.cwd(), arg('prompt-file')), 'utf8').trim();
 

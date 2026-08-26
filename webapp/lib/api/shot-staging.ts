@@ -333,16 +333,24 @@ export function expectedSizeFor(distanceM: number, lensMm: number): ShotSize | n
   return 'ELS';
 }
 
+/**
+ * Крупность уходит ТЕРМИНОМ И ДОЛЕЙ КАДРА. Голый термин модель трактует по
+ * статистике подписей, а там «medium close-up» размыт до среднего плана:
+ * 25.08 паспорт с `MCU` + 0,5 м дал фигуру с двух метров, тогда как проза
+ * «head and shoulders fill the vertical frame» на том же кадре попадала.
+ * Доля кадра — тот самый «признак, по которому лук видно» из доктрины
+ * рендера ниже; без неё поле `shot_size` до пикселей не доезжает.
+ */
 const SIZE_PHRASE: Readonly<Record<ShotSize, string>> = {
-  ECU: 'extreme close-up',
-  BCU: 'big close-up',
-  CU: 'close-up',
-  MCU: 'medium close-up',
-  MS: 'medium shot',
-  MLS: 'medium long shot',
-  FS: 'full shot',
-  LS: 'wide shot',
-  ELS: 'extreme wide shot',
+  ECU: 'extreme close-up — the eyes and mouth alone fill the frame',
+  BCU: 'big close-up — the face from forehead to chin fills the frame',
+  CU: 'close-up — the head fills the frame, shoulders at the bottom edge',
+  MCU: 'medium close-up — the head and shoulders fill the frame, chest at the bottom edge',
+  MS: 'medium shot — the figure from the waist up, head in the upper third',
+  MLS: 'medium long shot — the figure from the knees up',
+  FS: 'full shot — the whole figure head to foot, a little air above and below',
+  LS: 'wide shot — the figure small in frame, the surroundings taking most of it',
+  ELS: 'extreme wide shot — the figure tiny, the frame is about the space',
 };
 
 const LENS_PHRASE: Readonly<Record<LensLook, string>> = {

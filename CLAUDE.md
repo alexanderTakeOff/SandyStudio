@@ -295,7 +295,13 @@ When starting a new Claude Code session in this project:
 6. Set system mode to `===1===` ANALYTICS MODE (default — read-only)
 7. **Apply §12 Ritual 2** — `Date:` sanity check on PLAN.md AND `PLANET.md` (flag Director if > 3 days stale)
 8. Report current planet + next step to Director (planet from `PLANET.md`, live state from PLAN.md `## CURRENT STATE`)
-9. Ask the Director: "What are we working on today?" — and check the ask against the current planet before executing.
+9. **НЕ спрашивать «что дальше» — ПРЕДЪЯВИТЬ следующий шаг** (Директор, 2026-08-25). Следующий
+   шаг ВЫВОДИТСЯ, а не запрашивается: последний лист сессии (`Exact Next Step`) → `PLAN.md
+   Next:` → лист приёмки текущего изделия → `docs/plans/paradigm-run-*`. Свести их, назвать
+   шаг одной строкой со ссылкой на источник — и НАЧАТЬ. Вопрос Директору задаётся, только
+   если шаг упирается в его гейт (`===5===` · деньги · публикация · LOCKED · выбор планеты)
+   или если источники противоречат друг другу. «Что делаем сегодня?» — перекладывание работы:
+   ответ уже записан в планах, его надо прочитать.
 10. Identify which agent role is needed and read that agent's file in `agents/`
 11. Proceed with task — write files only if the Director activates `===5===`
 

@@ -137,6 +137,21 @@ describe('постановочный паспорт — чтение и ренд
     expect(renderStagingForPrompt(base).join('\n')).toContain('locked-off static shot');
   });
 
+  it('крупность уходит ДОЛЕЙ КАДРА, а не одним термином', () => {
+    // 25.08: паспорт MCU + 0,5 м дал средний план с двух метров, а проза
+    // «head and shoulders fill the vertical frame» на том же кадре попадала.
+    // Голый термин размыт в статистике подписей — доля кадра однозначна.
+    const sizes = ['ECU','BCU','CU','MCU','MS','MLS','FS','LS','ELS'] as const;
+    for (const shot_size of sizes) {
+      const line = renderStagingForPrompt({ ...base, shot_size }).find((l) => l.startsWith('- Framing:'));
+      expect(line, shot_size).toBeDefined();
+      // Признак читается как доля кадра: «fill the frame» / «from the waist up» / «small in frame».
+      expect(line, shot_size).toMatch(/fills? the frame|from the (waist|knees) up|head to foot|small in frame|frame is about the space/);
+    }
+    expect(renderStagingForPrompt({ ...base, shot_size: 'MCU' }).join(' '))
+      .toContain('the head and shoulders fill the frame');
+  });
+
   it('геометрия считается, а не угадывается', () => {
     expect(expectedSizeFor(2.0, 85)).toBe('MCU');
     expect(expectedSizeFor(0.5, 24)).toBe('MCU');
