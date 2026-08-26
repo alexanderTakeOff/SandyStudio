@@ -90,6 +90,21 @@ export async function getUpdates(offset: number, timeoutSec = 25): Promise<TgUpd
   );
 }
 
+/**
+ * «Печатает…» в шапке чата. Живёт ~5 секунд, поэтому шлётся повторно, пока ум
+ * ведёт ход.
+ *
+ * ЗАЧЕМ (Директор, 26.08): «а то как глухой». Ход ума идёт минутами, и всё это
+ * время пульт молчит — отличить работу от упавшего моста было нечем.
+ */
+export async function sendTyping(chatId: number): Promise<void> {
+  try {
+    await call('sendChatAction', { chat_id: chatId, action: 'typing' }, 8000);
+  } catch {
+    // Индикатор — украшение: его отказ не должен ронять ход.
+  }
+}
+
 export async function sendMessage(
   chatId: number,
   text: string,
