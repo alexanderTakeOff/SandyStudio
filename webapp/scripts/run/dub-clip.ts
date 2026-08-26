@@ -153,12 +153,23 @@ export default defineTool(
       }
 
       // 3) СВЕДЕНИЕ. Без loudnorm/48k/стерео файл «есть, но на телефоне молчит».
+      //
+      // ОТКУДА БЕРЁТСЯ ГОЛОС. После липсинка речь уже внутри клипа — это `0:a`.
+      // Без липсинка исходный клип НЕМОЙ, и `0:a` указывать некуда: дорожку речи
+      // надо подать отдельным входом, иначе `--lipsync no` теряет голос молча
+      // (поймано 27.08 на sh01, до первой траты).
+      const lipsynced = Boolean(voice) && arg('lipsync') === 'yes';
+      const voiceInput = lipsynced ? null : voice;
       const level = Number(arg('ambience-level'));
       const args: string[] = ['-v', 'error', '-y', '-i', video];
+      if (voiceInput) args.push('-i', voiceInput);
       if (ambience) args.push('-i', ambience);
-      const filter = ambience
-        ? `[0:a]aresample=48000[a0];[1:a]aresample=48000,highpass=f=90,volume=${level}[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11,aformat=channel_layouts=stereo[a]`
-        : `[0:a]aresample=48000,loudnorm=I=-16:TP=-1.5:LRA=11,aformat=channel_layouts=stereo[a]`;
+      const speech = lipsynced ? '0:a' : voiceInput ? '1:a' : null;
+      const ambienceIn = voiceInput ? '2:a' : '1:a';
+      if (!speech && !ambience) throw new Error('класть нечего: ни речи, ни атмосферы — клип останется немым');
+      const filter = speech && ambience
+        ? `[${speech}]aresample=48000[a0];[${ambienceIn}]aresample=48000,highpass=f=90,volume=${level}[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11,aformat=channel_layouts=stereo[a]`
+        : `[${speech ?? ambienceIn}]aresample=48000,loudnorm=I=-16:TP=-1.5:LRA=11,aformat=channel_layouts=stereo[a]`;
       args.push('-filter_complex', filter, '-map', '0:v', '-map', '[a]',
         '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p',
         '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-shortest', '-movflags', '+faststart', outPath);

@@ -37,13 +37,13 @@ function findAudioUrl(node: unknown): string | null {
   return null;
 }
 
-async function synthBeat(beat: SpeechBeat, voiceId: string, key: string, out: string): Promise<void> {
+async function synthBeat(beat: SpeechBeat, voiceId: string, emotion: string, key: string, out: string): Promise<void> {
   const submit = await fetch(`https://queue.fal.run/${MODEL}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', Authorization: `Key ${key}` },
     body: JSON.stringify({
       text: beat.text,
-      voice_setting: { voice_id: voiceId, speed: beat.speed, vol: beat.vol, emotion: 'neutral' },
+      voice_setting: { voice_id: voiceId, speed: beat.speed, vol: beat.vol, emotion },
       language_boost: 'Russian',
       output_format: 'url',
     }),
@@ -69,11 +69,18 @@ export default defineTool(
     summary: 'Речь голосом клона: реплика делится на такты со своими параметрами, склеивается паузами в дугу.',
     args: {
       line: { about: 'реплика. Такты делятся `|`; параметры такта — `текст@скорость` или `текст@скорость:громкость`' },
-      voice: { about: 'id клонированного голоса у провайдера, напр. `Voicebcb67b451787599645`' },
+      voice: { about: 'голос: id клона (`Voicebcb67b451787599645`) ИЛИ пресет провайдера — `Determined_Man`, `Exuberant_Girl`, `Wise_Woman`, `Lively_Girl`, `Calm_Woman`, `Deep_Voice_Man`, `Patient_Man`, `Casual_Guy`, `Abbess`. Пресет не требует образца (O29)' },
       out: { about: 'куда положить mp3 — абсолютный путь или от корня `webapp/`' },
       speed: { about: 'скорость по умолчанию. Выше 0,95 добавляет металл в тембр (вердикт Директора 25.08)', default: '0.93' },
       gap: { about: 'пауза между тактами в секундах; пауза — часть дуги, а не пустота', default: String(DEFAULT_GAP_SEC) },
       'pad-to': { about: 'дотянуть дорожку тишиной до этой длины в секундах — липсинк режет клип по звуку', default: '' },
+      // Эмоция шире образца (O12, 24.08) и была зашита в `neutral` — доказанный
+      // рычаг стоял выключенным: крикливость не берётся ни скоростью, ни текстом.
+      emotion: {
+        about: 'окраска речи; шире образца голоса — на мягком голосе `angry` даёт железо в тембре (O12)',
+        default: 'neutral',
+        values: ['neutral', 'happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised'],
+      },
     },
     env: {
       FAL_KEY: { about: 'ключ провайдера речи' },
@@ -101,7 +108,7 @@ export default defineTool(
         await runFfmpeg(['-v', 'error', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=32000:cl=mono', '-t', String(gap), '-c:a', 'libmp3lame', '-q:a', '4', silence]);
         for (let i = 0; i < beats.length; i += 1) {
           const file = join(work, `b${i}.mp3`);
-          await synthBeat(beats[i], arg('voice'), key, file);
+          await synthBeat(beats[i], arg('voice'), arg('emotion'), key, file);
           console.log(`такт ${i + 1}/${beats.length}: скорость ${beats[i].speed} · «${beats[i].text.slice(0, 48)}»`);
           if (i > 0) parts.push(silence);
           parts.push(file);
@@ -109,7 +116,7 @@ export default defineTool(
       } else {
         for (let i = 0; i < beats.length; i += 1) {
           const file = join(work, `b${i}.mp3`);
-          await synthBeat(beats[i], arg('voice'), key, file);
+          await synthBeat(beats[i], arg('voice'), arg('emotion'), key, file);
           parts.push(file);
         }
       }
