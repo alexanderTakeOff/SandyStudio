@@ -74,7 +74,13 @@ process.stdin.on('end', () => {
   }
 
   const hadProofTool = bashCommands.some((c) => PROOF_RE.test(c));
-  const hadGenFrame = bashCommands.some((c) => /scripts[\\/]run[\\/]gen-frame/.test(c));
+  // 28.08 — сторож считал генерацией ЧТЕНИЕ КОНТРАКТА. Ход, где ум открыл
+  // `gen-frame --help`, блокировался требованием сверить несуществующий кадр:
+  // удовлетворить такое можно было только ВЫДУМАВ вердикт — то есть совершив
+  // ровно тот рапорт, против которого правило 8 и написано. Сторож, толкающий
+  // к выдумке, вреднее отсутствующего: он приучает не верить своему крику.
+  // Справка денег не стоит и изделия не рождает — из триггера исключена.
+  const hadGenFrame = bashCommands.some((c) => /scripts[\/]run[\/]gen-frame/.test(c) && !/(^|\s)(--help|-h)(\s|$)/.test(c));
 
   // Гейт 1 (D100): рапорт без предъявления.
   if (REPORT_RE.test(finalText) && bashCommands.length > 0 === false && !hadProofTool) {
