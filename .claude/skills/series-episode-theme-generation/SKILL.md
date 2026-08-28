@@ -18,7 +18,7 @@ status: ACTIVE
 # matched every agent's manifest (including EXEC-SB / EXEC-CREAD) and crowded out
 # their real playbooks under MAX_SKILLS_PER_CALL. Scoped to its real consumers.
 applies_when:
-  agent: [EXEC-CONC, EXEC-HW]
+  agent: [EXEC-CONC]
 ---
 
 # Series Episode Theme Generation

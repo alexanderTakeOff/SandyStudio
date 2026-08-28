@@ -95,7 +95,9 @@ export const EREF_DESIGNER_PROVIDER_ALLOWLIST = ['gpt-image-2'] as const;
  *  the gpt-image-2 bounds rationale. */
 import { SIZE_BY_DELIVERY_TARGET } from '@/lib/api/provider-capabilities';
 export { SIZE_BY_DELIVERY_TARGET };
-import { loadAgentSkillBodies, composeActivePlaybooksBlock } from '../load-skills';
+import {
+  getAgentSkillManifest,
+  loadAgentSkillBodies, composeActivePlaybooksBlock } from '../load-skills';
 
 export class EpisodeReferenceDesignerError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -321,33 +323,40 @@ export function _resetSystemPromptCacheForTests(): void {
 // unioned past selection anyway — load-skills.ts `mandatory`). This is the
 // thumbnail-designer.ts shape: load the bodies, compose the block, done. No
 // manifest call, no paid selector round-trip per plan.
-const EREF_DESIGNER_PROVIDER_SKILL = 'gpt-image-2-prompting';
-
-/** Genre → the prompt-composition playbook that leads the positive prompt. */
-const EREF_DESIGNER_GENRE_SKILL: Readonly<Record<string, string>> = Object.freeze({
-  comedy: 'eref-prompt-comedy',
-  cosmic_horror: 'eref-prompt-cosmic-horror',
-});
-
 /**
- * Resolve the playbook block for this run: the provider mechanics skill plus the
- * genre skill, when the series declares a genre we have one for.
+ * Плейбуки Дизайнера рефов — ИЗ МАНИФЕСТА, а не из захардкоженной карты.
  *
- * An unknown genre is NOT an error here — unlike the readability critic, the
- * Designer can still author from the role file alone. It returns the slugs it
- * skipped so the caller can log the gap rather than let it pass unseen.
+ * 2026-08-28. До этого здесь стояли ДВА литерала — провайдерский слуг и карта
+ * `genre -> eref-prompt-*` на два жанра. Замер показал цену: у серии с жанром
+ * `doc` (S22, говорящий человек) карта не давала НИЧЕГО, и до Дизайнера не
+ * доезжали ни `speech-avatar-agitprop`, ни `shot-staging` — оба `hard`, оба
+ * отскоуплены ровно на эту роль. Роль работала без своего постановочного движка
+ * и молчала об этом.
+ *
+ * Селектор уже умеет то, ради чего писалась карта: `applies_when.agent` +
+ * `genre` во фронтматтере скилла. Карта была ВТОРОЙ копией того же закона —
+ * и, как всякая вторая копия, отстала от первой. Удалена; новый жанр теперь
+ * заводится строкой в скилле, а не правкой раннера.
+ *
+ * Шаг отбора не нужен: `hard` минует его по построению, а у этой роли скиллов
+ * немного. Берём весь манифест — как это делает thumbnail-designer.
  */
 async function loadDesignerPlaybooks(
   seriesGenre: string | null | undefined,
 ): Promise<{ block: string; loaded: string[]; missingGenre: string | null }> {
-  const genreSlug =
-    typeof seriesGenre === 'string' ? EREF_DESIGNER_GENRE_SKILL[seriesGenre] : undefined;
-  const want = [EREF_DESIGNER_PROVIDER_SKILL, ...(genreSlug ? [genreSlug] : [])];
+  const genre = typeof seriesGenre === 'string' && seriesGenre ? seriesGenre : undefined;
+  const manifest = await getAgentSkillManifest({ agentId: 'EXEC-EREF-DESIGNER', genre });
+  const want = manifest.available.map((m) => m.slug);
   const { loaded } = await loadAgentSkillBodies(want);
+  // Жанровый движок опознаётся по тому, что скилл объявил ЭТОТ жанр явно, а не
+  // по имени файла: имя — соглашение, фронтматтер — контракт.
+  const genreEngine = manifest.available.find((m) =>
+    genre ? (m.frontmatter.applies_when?.genre ?? []).includes(genre) : false,
+  );
   return {
     block: composeActivePlaybooksBlock(loaded),
     loaded: loaded.map((s) => s.slug),
-    missingGenre: genreSlug ? null : (seriesGenre ?? null),
+    missingGenre: genreEngine ? null : (seriesGenre ?? null),
   };
 }
 
@@ -1227,8 +1236,10 @@ export async function runEpisodeReferenceDesigner(
       `No prompt playbook for genre "${playbooks.missingGenre}" — authored on the role file + provider skill alone`,
     );
   }
-  if (!playbooks.loaded.includes(EREF_DESIGNER_PROVIDER_SKILL)) {
-    notes.push(`Skill ${EREF_DESIGNER_PROVIDER_SKILL} not found — provider rules unavailable`);
+  // Пустой манифест — не «нормально по умолчанию»: роль осталась без плейбуков и
+  // будет авторить с одного файла роли. Говорим это вслух, а не молчим.
+  if (playbooks.loaded.length === 0) {
+    notes.push('No playbooks loaded for EXEC-EREF-DESIGNER — authored on the role file alone');
   }
 
   const systemPrompt = await loadSystemPrompt();

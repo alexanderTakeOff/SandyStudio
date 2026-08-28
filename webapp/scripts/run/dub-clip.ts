@@ -90,8 +90,11 @@ export default defineTool(
       lipsync: { about: 'двигать губы под дорожку. `no` — просто подложить звук', default: 'yes', values: ['yes', 'no'] },
       ambience: { about: 'сочинить атмосферу места ПО ВИДЕО и подмешать', default: 'yes', values: ['yes', 'no'] },
       'ambience-level': { about: 'громкость фона относительно голоса; 0,05 — «не тишина», 0,15 — двор слышен', default: String(DEFAULT_AMBIENCE_LEVEL) },
+      'ambience-file': {
+        about: 'готовая атмосфера (mp3) — переиспользовать вместо генерации. Фон места не меняется от правки реплики, а его пересочинение стоит минуты',
+        default: '',
+      },
       'ambience-hint': { about: 'что должно звучать: источники, а не настроение', default: 'quiet residential courtyard, sparrows, light wind, a car passing far away' },
-      'ambience-file': { about: 'готовая атмосфера с прошлого круга (`<клип>.ambience.mp3`) — берётся как есть, БЕЗ ожидания и траты. Правишь только голос — подавай её сюда', default: '' },
     },
     env: {
       FAL_KEY: { about: 'ключ провайдера' },
@@ -141,48 +144,38 @@ export default defineTool(
 
       // 2) АТМОСФЕРА. Вход — техзадание: показываем ТОЛЬКО то, что должно
       // звучать. Верхняя полоса кадра, где говорящего рта нет ни в одном моменте.
-      //
-      // УТВЕРЖДЁННЫЙ СЛОЙ ПЕРЕЖИВАЕТ КРУГ. Атмосфера сочинялась заново при каждом
-      // вызове и стиралась вместе с временной папкой — поэтому правка ОДНОГО
-      // голоса тянула минуту ожидания и $0,05 за уже принятый фон (Директор,
-      // 27.08: «больше ничего не нужно же было менять»). Теперь она ложится
-      // рядом с изделием и подаётся обратно через `--ambience-file`.
       let ambience: string | null = null;
-      const ready = arg('ambience-file').trim() ? resolve(process.cwd(), arg('ambience-file')) : null;
-      if (ready) {
-        if (!existsSync(ready)) throw new Error(`готовой атмосферы нет: ${ready}`);
-        ambience = ready;
-        console.log(`атмосфера взята готовой: ${ready} · $0`);
+      const reuse = arg('ambience-file').trim();
+      if (reuse) {
+        // Атмосфера места от правки РЕПЛИКИ не меняется. Пересочинять её на
+        // каждой итерации — минуты ожидания за один и тот же результат
+        // (Директор, 27.08: «первый раз она сделала за минуту, теперь десять»).
+        ambience = resolve(process.cwd(), reuse);
+        if (!existsSync(ambience)) throw new Error(`атмосферы нет: ${ambience}`);
+        console.log(`атмосфера взята готовой: ${ambience} · $0`);
       } else if (arg('ambience') === 'yes') {
         const strip = join(work, 'strip.mp4');
         await runFfmpeg(['-v', 'error', '-y', '-i', clip, '-vf', 'crop=iw:ih*0.22:0:0', '-an', strip]);
         const ambienceClip = join(work, 'ambience.mp4');
         await runJob(AMBIENCE_MODEL, { video_url: await upload(strip, 'strip.mp4', 'video/mp4', key), prompt: arg('ambience-hint') }, key, /\.(mp4|wav|mp3)/, ambienceClip);
-        ambience = `${outPath}.ambience.mp3`;
+        ambience = join(work, 'ambience.mp3');
         await runFfmpeg(['-v', 'error', '-y', '-i', ambienceClip, '-vn', '-c:a', 'libmp3lame', '-q:a', '2', ambience]);
         spent += AMBIENCE_COST;
-        console.log(`атмосфера сочинена по видео · $${AMBIENCE_COST.toFixed(2)} · сохранена: ${ambience}`);
-        console.log(`следующий круг по голосу: --ambience-file ${ambience} — без ожидания и без траты`);
+        // Кладём РЯДОМ с результатом: следующая правка реплики возьмёт её
+        // готовой через --ambience-file и не будет ждать провайдера.
+        const keep = outPath.replace(/.[^.]+$/, '.ambience.mp3');
+        await runFfmpeg(['-v', 'error', '-y', '-i', ambience, '-c', 'copy', keep]);
+        console.log(`атмосфера сочинена по видео · ${AMBIENCE_COST.toFixed(2)} · сохранена: ${keep}`);
+        console.log(`  следующая правка реплики: --ambience-file ${keep} (бесплатно и мгновенно)`);
       }
 
       // 3) СВЕДЕНИЕ. Без loudnorm/48k/стерео файл «есть, но на телефоне молчит».
-      //
-      // ОТКУДА БЕРЁТСЯ ГОЛОС. После липсинка речь уже внутри клипа — это `0:a`.
-      // Без липсинка исходный клип НЕМОЙ, и `0:a` указывать некуда: дорожку речи
-      // надо подать отдельным входом, иначе `--lipsync no` теряет голос молча
-      // (поймано 27.08 на sh01, до первой траты).
-      const lipsynced = Boolean(voice) && arg('lipsync') === 'yes';
-      const voiceInput = lipsynced ? null : voice;
       const level = Number(arg('ambience-level'));
       const args: string[] = ['-v', 'error', '-y', '-i', video];
-      if (voiceInput) args.push('-i', voiceInput);
       if (ambience) args.push('-i', ambience);
-      const speech = lipsynced ? '0:a' : voiceInput ? '1:a' : null;
-      const ambienceIn = voiceInput ? '2:a' : '1:a';
-      if (!speech && !ambience) throw new Error('класть нечего: ни речи, ни атмосферы — клип останется немым');
-      const filter = speech && ambience
-        ? `[${speech}]aresample=48000[a0];[${ambienceIn}]aresample=48000,highpass=f=90,volume=${level}[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11,aformat=channel_layouts=stereo[a]`
-        : `[${speech ?? ambienceIn}]aresample=48000,loudnorm=I=-16:TP=-1.5:LRA=11,aformat=channel_layouts=stereo[a]`;
+      const filter = ambience
+        ? `[0:a]aresample=48000[a0];[1:a]aresample=48000,highpass=f=90,volume=${level}[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11,aformat=channel_layouts=stereo[a]`
+        : `[0:a]aresample=48000,loudnorm=I=-16:TP=-1.5:LRA=11,aformat=channel_layouts=stereo[a]`;
       args.push('-filter_complex', filter, '-map', '0:v', '-map', '[a]',
         '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p',
         '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-shortest', '-movflags', '+faststart', outPath);

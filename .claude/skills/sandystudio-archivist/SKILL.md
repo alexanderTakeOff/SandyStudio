@@ -2,6 +2,8 @@
 name: sandystudio-archivist
 description: SandyStudio project-local skill for the EXEC-ARCH agent. Enforces the SS-S0X-... naming convention, manages status transitions DRAFT→REVIEW→APPROVED→LOCKED, and keeps the canonical asset registry from specs/system/project_state.md in sync. Use when creating new project files, promoting status, or auditing the file tree against the convention.
 status: DRAFT
+applies_when:
+  agent: [EXEC-ARCH]
 ---
 
 # SandyStudio Archivist

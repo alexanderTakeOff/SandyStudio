@@ -17,7 +17,11 @@ describe('gen-role-polina', () => {
     const lf = (s: string) => s.replace(/\r\n/g, '\n');
     const committed = readFileSync(resolve(process.cwd(), 'roles', 'polina.md'), 'utf-8');
     expect(lf(committed)).toBe(lf(await buildPolinaRole()));
-  });
+    // Сборка роли интроспектирует ВСЕ инструменты подряд, а их 24 и будет больше.
+    // Дефолтные 5 секунд отражали не корректность, а их число в день написания
+    // теста: под параллельным запуском сторож падал по ВРЕМЕНИ, а не по сути,
+    // и блокировал пуш ложно (27.08).
+  }, 30_000);
 
   it('роль несёт обязательные блоки харнеса', async () => {
     const role = await buildPolinaRole();
@@ -32,5 +36,5 @@ describe('gen-role-polina', () => {
     expect(role).toContain('[МАРШРУТ СТУДИИ');
     // Жанровые границы скиллов видны в карте (урок sandy-gag-library).
     expect(role).toContain('[жанр: comedy]');
-  });
+  }, 30_000); // та же причина: каждый новый инструмент удлиняет интроспекцию
 });

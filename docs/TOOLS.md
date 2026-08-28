@@ -134,7 +134,7 @@ npx tsx scripts/run/dress-video.ts [--id <id>] [--thumb <thumb>] [--privacy <pri
 Кладёт звук на готовый клип: губы под дорожку, атмосфера места по видео, сведение до вещательного уровня.
 
 ```
-npx tsx scripts/run/dub-clip.ts --clip <clip> [--voice <voice>] --out <out> [--lipsync <lipsync>] [--ambience <ambience>] [--ambience-level <ambience-level>] [--ambience-hint <ambience-hint>]
+npx tsx scripts/run/dub-clip.ts --clip <clip> [--voice <voice>] --out <out> [--lipsync <lipsync>] [--ambience <ambience>] [--ambience-level <ambience-level>] [--ambience-file <ambience-file>] [--ambience-hint <ambience-hint>]
 ```
 
 | аргумент | обязателен | по умолчанию | допустимо | что это |
@@ -145,6 +145,7 @@ npx tsx scripts/run/dub-clip.ts --clip <clip> [--voice <voice>] --out <out> [--l
 | `--lipsync` | — | `yes` | `yes` · `no` | двигать губы под дорожку. `no` — просто подложить звук |
 | `--ambience` | — | `yes` | `yes` · `no` | сочинить атмосферу места ПО ВИДЕО и подмешать |
 | `--ambience-level` | — | `0.05` | — | громкость фона относительно голоса; 0,05 — «не тишина», 0,15 — двор слышен |
+| `--ambience-file` | — | `` | — | готовая атмосфера (mp3) — переиспользовать вместо генерации. Фон места не меняется от правки реплики, а его пересочинение стоит минуты |
 | `--ambience-hint` | — | `quiet residential courtyard, sparrows, light wind, a car passing far away` | — | что должно звучать: источники, а не настроение |
 
 **env:**

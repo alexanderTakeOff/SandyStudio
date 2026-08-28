@@ -12,7 +12,7 @@ status: DRAFT
 owner: Director
 created: 2026-07-23
 applies_when:
-  agent: [orchestrator, EXEC-CONC, EXEC-ARCH]
+  agent: [EXEC-ORCH, EXEC-CONC, EXEC-ARCH]
 ---
 
 # Replace a LOCKED canon asset in place
