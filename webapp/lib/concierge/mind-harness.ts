@@ -88,12 +88,27 @@ export function buildHarnessInvocation(
   };
 }
 
-/** Subscription paths must never inherit API billing credentials. */
+/**
+ * Subscription paths must never inherit API billing credentials, and they must keep
+ * the HOUR-long prompt cache.
+ *
+ * The hour is a load-bearing assumption of this harness, not an optimisation: the
+ * whole episode stays in ONE session precisely because hand-offs between sessions are
+ * where errors are born. Until F6 we built the request ourselves and set the 1h
+ * cache_control ttl by hand (measured: 56K creation -> 85K read, $0.36 -> $0.04). F6
+ * handed request building to the CLI and the knob went with it, unnoticed, because the
+ * assumption lived in a plan and not in a line of code. The CLI decides TTL in this
+ * order: FORCE_PROMPT_CACHING_5M -> ENABLE_PROMPT_CACHING_1H -> (no subscription or
+ * overage) -> an allowlist of call-sites. Setting the flag here takes the knob back and
+ * survives overage, which otherwise drops every turn to the 5-minute window - shorter
+ * than the Director's pauses between messages.
+ */
 export function sanitizeSubscriptionEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env = { ...source };
   delete env.ANTHROPIC_API_KEY;
   delete env.OPENAI_API_KEY;
   delete env.CODEX_API_KEY;
+  env.ENABLE_PROMPT_CACHING_1H = '1';
   return env;
 }
 

@@ -91,6 +91,18 @@ describe('mind harness adapters', () => {
     expect(env.RUN_EPISODE_ID).toBe('episode');
   });
 
+  // Час кэша — несущее допущение харнеса: весь эпизод живёт в ОДНОЙ сессии, потому что
+  // ошибки рождаются на стыке сессий. До Ф6 ttl ставили мы сами; Ф6 отдала сборку
+  // запроса CLI, и ручка ушла вместе с ней — незамеченной, потому что допущение жило в
+  // плане, а не в строке кода. Сторож держит её на месте: без флага CLI роняет ход в
+  // пятиминутное окно, которое короче пауз Директора между сообщениями.
+  it('держит часовой кэш промптов в подписочном окружении', () => {
+    const env = sanitizeSubscriptionEnv({ NODE_ENV: 'test' });
+
+    expect(env.ENABLE_PROMPT_CACHING_1H).toBe('1');
+    expect(env.FORCE_PROMPT_CACHING_5M).toBeUndefined();
+  });
+
   it('не пытается resume-нуть Claude session id в Codex', () => {
     expect(
       providerSessionId(
