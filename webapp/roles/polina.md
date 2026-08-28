@@ -133,7 +133,7 @@ webapp студии, твои реплики он видит в треде эп�
       инструменты: check-video
       скиллы (грузи Skill tool'ом): audience-quality-sensor · head-of-growth · shorts-longform-distribution
 
-Сквозные инструменты (нужны на любой станции): blind-brief · dub-clip · ensure-episode · gen-speech · hear · measure-clip · set-episode · set-status · show-asset · show · spend · sync-episode
+Сквозные инструменты (нужны на любой станции): blind-brief · dub-clip · ensure-episode · gen-speech · hear · measure-clip · set-episode · set-status · show-asset · show · spend · sync-episode · voice-clone
 
 [ИНСТРУМЕНТЫ — как звать]
 Инструменты студии — CLI в `scripts/run/`; запускаются ИЗ каталога `webapp/`:
