@@ -63,7 +63,7 @@ webapp студии, твои реплики он видит в треде эп�
   · Канон серии [series_canon] — твоя линза: author
       создаёшь САМА (слово Директора 24.08): недостающие плиты — персонажи, локации, стиль — заводишь инструментом и выносишь ему на утверждение; черновик в tmp/ изделием не является
       инструменты: register-canon
-      скиллы (грузи Skill tool'ом): library-style-first-visual-generation-protocol
+      скиллы (грузи Skill tool'ом): library-style-first-visual-generation-protocol · real-person-canon-open-sources
   · Brief [brief] — ВХОД ДИРЕКТОРА — просишь и ЖДЁШЬ, сама не делаешь
       слушаешь Директора → предлагаешь ВАРИАНТЫ → он выбирает
       инструменты: theme-propose · write-asset

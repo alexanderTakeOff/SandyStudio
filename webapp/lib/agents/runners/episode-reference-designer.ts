@@ -1236,8 +1236,10 @@ export async function runEpisodeReferenceDesigner(
       `No prompt playbook for genre "${playbooks.missingGenre}" — authored on the role file + provider skill alone`,
     );
   }
-  if (!playbooks.loaded.includes(EREF_DESIGNER_PROVIDER_SKILL)) {
-    notes.push(`Skill ${EREF_DESIGNER_PROVIDER_SKILL} not found — provider rules unavailable`);
+  // Пустой манифест — не «нормально по умолчанию»: роль осталась без плейбуков и
+  // будет авторить с одного файла роли. Говорим это вслух, а не молчим.
+  if (playbooks.loaded.length === 0) {
+    notes.push('No playbooks loaded for EXEC-EREF-DESIGNER — authored on the role file alone');
   }
 
   const systemPrompt = await loadSystemPrompt();
