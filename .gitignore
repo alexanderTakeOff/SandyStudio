@@ -111,3 +111,6 @@ webapp/*.log
 inngest.log
 prod.log
 .claude/.run-guard-state.json
+
+# Разовые пробники сессии в webapp/ — живут один ход и сносятся (маршрут §9.14)
+webapp/_*.ts
