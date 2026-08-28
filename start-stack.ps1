@@ -82,6 +82,31 @@ Set-Location $Web
 $TreeName = if ($RepoRoot -match 'SandyStudio-nx$') { 'WORK TREE (nx) - new paradigm' }
             elseif ($RepoRoot -match 'SandyStudio$')  { 'MASTER' }
             else { 'other' }
+# PORT MUST MATCH THE TREE (audit 2026-08-27). The launchers and `next start` carry
+# MASTER defaults (3000/8288) because they were written before the second tree
+# existed. In a work tree such a default silently does the wrong job: it either
+# collides with master's live stack, or - worse, when master is down - quietly takes
+# its port, and everything pointing at 3000 (OAuth redirect_uri, launch.json) starts
+# hitting the wrong app. A default belongs to whoever SET it, not to whoever happens
+# to run it - so we refuse instead of guessing.
+$ExpectedPort = if ($RepoRoot -match 'SandyStudio-nx$') { 3001 }
+                elseif ($RepoRoot -match 'SandyStudio$') { 3000 }
+                else { 0 }
+if ($ExpectedPort -ne 0 -and $Port -ne $ExpectedPort) {
+  Write-Host ''
+  Write-Host '  == REFUSING: that port does not belong to this tree ==' -ForegroundColor Red
+  Write-Host "     tree: $RepoRoot" -ForegroundColor Yellow
+  Write-Host "     asked for :$Port, this tree runs on :$ExpectedPort" -ForegroundColor Yellow
+  Write-Host '     Here: start-stack-nx.cmd (3001/8388).  In master: start-stack.cmd (3000/8288).' -ForegroundColor Yellow
+  Write-Host ''
+  exit 1
+}
+if ($ExpectedPort -eq 0) {
+  # Unknown tree: nothing to check against, so say it out loud rather than invent an
+  # expectation. The Polina clone is already refused earlier, by name.
+  Write-Host "  == UNKNOWN TREE ($RepoRoot): port :$Port taken on trust ==" -ForegroundColor Yellow
+}
+
 Write-Host ''
 Write-Host "  == STARTING STACK IN: $TreeName ==" -ForegroundColor Green
 Write-Host "     $RepoRoot   ->   App :$Port | Inngest :$InngestPort (gateway :$InngestGatewayPort)" -ForegroundColor Green
