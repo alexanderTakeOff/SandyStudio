@@ -87,11 +87,19 @@ process.stdin.on('end', () => {
 
   console.error(`[Hook] Ritual 3: running verify trio (tsc + vitest) for ${codeAhead} code files ahead of master…`);
   try {
+    // 28.08 — сторож падал не на тестах, а на СВОЁМ окружении: «'tsc' is not
+    // recognized». Руками `npm run typecheck` в том же каталоге отрабатывал чисто,
+    // то есть PATH процесса хука беднее интерактивного и npm не находит бинарь
+    // проекта. Сторож, падающий по своей причине, учит обходить себя флагом — то же
+    // самое, за что сегодня чинили сторож самосверки. Кладём node_modules/.bin в PATH
+    // явно, а не полагаемся на то, что его добавит npm.
+    const binDir = require('node:path').join(webappDir, 'node_modules', '.bin');
     const out = execSync('npm run verify', {
       cwd: webappDir,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 5 * 60 * 1000,
+      env: { ...process.env, PATH: binDir + require('node:path').delimiter + (process.env.PATH || '') },
     });
     // Extract test count from vitest output if present
     const m = out.match(/Tests\s+(\d+)\s+passed/i) || out.match(/(\d+)\s+passed/i);
