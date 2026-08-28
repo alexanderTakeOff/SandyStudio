@@ -18,7 +18,7 @@ status: ACTIVE
 # 2026-07-29: was UNSCOPED — see the sibling generation skill. An absent
 # `applies_when` is a wildcard and polluted every agent's manifest.
 applies_when:
-  agent: [EXEC-CONC, EXEC-HW]
+  agent: [EXEC-CONC]
 ---
 
 # Series Episode Theme Selection

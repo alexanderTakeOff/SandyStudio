@@ -2,6 +2,8 @@
 name: episode-serialization
 description: SandyStudio project-local skill for the ART-CONT (Continuity Supervisor) agent. Tracks long-arc narrative consistency across the episode — character arcs, plot threads, world-state changes, callbacks, foreshadowing. Use when reviewing scripts/storyboards for continuity, planning episode order, or detecting canon contradictions.
 status: DRAFT
+applies_when:
+  agent: [EXEC-WCHK, EXEC-SREV]
 hard: false
 ---
 # Episode Serialization

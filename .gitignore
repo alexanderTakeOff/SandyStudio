@@ -79,6 +79,8 @@ webapp/SandyStudioFILMS_media_cache/
 
 # Uncommitted-work backup patches (per-session breadcrumbs, like .claude/CHANGES.md)
 .claude/*.patch
+# Состояние сторожа THEO-INBOX — локальный отпечаток показа, не изделие
+.claude/.theo-inbox-guard.json
 .claude/*-snapshot.patch
 
 # One-off diagnostic / poll / recovery scripts from live episode runs (E12–E16).

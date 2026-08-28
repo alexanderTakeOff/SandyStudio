@@ -28,11 +28,20 @@ import {
 } from '../skills/select-skills';
 import type { LoadedSkill, SkillManifest } from '../skills/load-skill-file';
 
-// Per-call total body budget. Broad capability skills routinely run
-// 8-12 KB; we keep the upper headroom generous so a normal Storyboarder
-// run lands all activated playbooks. Truncation kicks in only when the
-// agent activates many skills at once.
-const TOTAL_BODY_BUDGET = 24_000;
+// Per-call total body budget.
+//
+// 2026-08-28 — ПОДНЯТ 24_000 -> 120_000 решением Директора, после замера,
+// показавшего, что потолок молча РЕЗАЛ работу: у EXEC-SB x comedy библиотека
+// гэгов выбрасывалась ЦЕЛИКОМ, а shot-staging доезжал огрызком 3021 из 9298
+// символов; у EXEC-SW x comedy та же библиотека теряла 27% хвоста — ровно те
+// разделы, где плотность по актам и запрещённые гэги. Директор увидел это как
+// «последние ролики не смешные», и он был прав.
+//
+// Почему 120k: окно рабочих моделей — 1 000 000 токенов, 120 000 символов
+// ~= 30 000 токенов, то есть 3% окна. Прежние 24k были рассчитаны на скиллы по
+// 8-12 КБ; полка с тех пор выросла до 20-38 КБ на файл. Потолок, отражающий
+// размеры позапрошлого сезона, — не защита, а тихая цензура.
+const TOTAL_BODY_BUDGET = 120_000;
 
 export interface LoadAgentSkillsArgs {
   agentId: string;
@@ -114,6 +123,11 @@ export async function loadAgentSkillBodies(
     const remaining = TOTAL_BODY_BUDGET - total;
     if (remaining <= 0) {
       truncated += 1;
+      // Молчаливый выброс — худший класс отказа: агент работает без движка,
+      // и об этом не знает никто. Бюджет кончился => скажи это вслух.
+      console.warn(
+        `[skills] DROPPED "${skill.slug}" — бюджет тел исчерпан (${TOTAL_BODY_BUDGET} симв). Скилл до модели НЕ доехал.`,
+      );
       continue;
     }
     const body = skill.body;
@@ -126,6 +140,9 @@ export async function loadAgentSkillBodies(
     // so the consumer can tell the body was clamped, but the skill is still
     // included rather than dropped. Single oversized skills must not vanish.
     const sliced = body.slice(0, remaining - 64).trimEnd() + '\n\n[…skill body truncated for context budget…]';
+    console.warn(
+      `[skills] TRUNCATED "${skill.slug}" — ${body.length} -> ${sliced.length} симв. Хвост скилла до модели НЕ доехал.`,
+    );
     total += sliced.length;
     out.push({ ...skill, body: sliced });
     truncated += 1;

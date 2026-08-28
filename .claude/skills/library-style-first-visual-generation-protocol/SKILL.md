@@ -5,8 +5,6 @@ status: ACTIVE
 owner: Polina
 applies_when:
   agent: [EXEC-BIBLE-AUTHOR]
-  gate: [bible_library_generation, visual_development]
-  file_type: [series_bible, library_visual_asset]
 hard: true
 created: 2026-05-19
 ---

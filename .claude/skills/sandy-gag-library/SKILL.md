@@ -4,7 +4,7 @@ description: Grammar of the Sandy comedy universe. Defines 10 gag taxonomy categ
 status: ACTIVE
 owner: EXEC-HW (Head Writer) · EXEC-SW (Writer) · EXEC-GAGAD (planned, Day 11+ sprint)
 applies_when:
-  agent: [EXEC-HW, EXEC-SW, EXEC-SREV, EXEC-SB, EXEC-GAGAD]
+  agent: [EXEC-SW, EXEC-SREV, EXEC-SB]
   genre: [comedy]
 hard: false
 created: 2026-05-19
