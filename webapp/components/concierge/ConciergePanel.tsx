@@ -693,6 +693,9 @@ export function ConciergePanel() {
       // Ф5: ходы моста (m.bridge) приходят ТОЛЬКО Realtime'ом — рисуем их той
       // же веткой, что server-authored auto-react.
       if (turn.role === 'assistant' && (m.auto_react === true || m.bridge === true)) {
+        // Ответ пришёл — шага больше нет. Плашка гаснет здесь, а не по таймеру:
+        // таймер соврал бы на длинном шаге.
+        setToolPlashka(null);
         // 2026-05-26 — chat-internal persists intermediate `🔧 toolName(args)`
         // tool_call turns with auto_react=true for audit. Director sees them
         // as visual noise in the chat. Drop them on the UI side; the
@@ -736,6 +739,19 @@ export function ConciergePanel() {
             },
           ];
         });
+        return;
+      }
+      // D106 — шаг ума на экране. Мост пишет строку на КАЖДЫЙ вызов инструмента
+      // (mind-bridge: role='tool', event_type='tool_call', content = "<имя> <аргументы>"),
+      // Realtime их доставляет — и до 28.08 они молча падали в фильтр ниже. Директор
+      // видел только «Полина работает · N мин» и не мог отличить работу от зависания:
+      // ход с генерацией клипов идёт двадцать минут, и всё это время экран мёртв.
+      // Плашка ниже (toolPlashka) была написана под старый SSE-путь и простаивала.
+      if (turn.role === 'tool' && m.bridge === true) {
+        const raw = String(turn.content ?? '').trim();
+        const name = raw.split(/s+/)[0] || 'инструмент';
+        const startedAt = turn.created_at ? new Date(turn.created_at).getTime() : Date.now();
+        setToolPlashka({ id: turn.id, name, startedAt });
         return;
       }
       if (turn.role !== 'system') return; // user/assistant flow through chat route
@@ -796,7 +812,7 @@ export function ConciergePanel() {
           .from('concierge_turns')
           .select('id,role,content,metadata,created_at')
           .eq('thread_id', threadId)
-          .in('role', ['system', 'assistant', 'director'])
+          .in('role', ['system', 'assistant', 'director', 'tool'])
           .order('created_at', { ascending: false })
           .limit(60);
         console.log('[ConciergePanel] DB-load result: rows=', data?.length ?? 0, 'error=', error);
@@ -813,6 +829,10 @@ export function ConciergePanel() {
         };
         const rows = data as unknown as SystemTurnRow[];
         const additions: Message[] = [];
+        // D106 — последний шаг ума из истории: после перезагрузки страницы во время
+        // долгого хода экран иначе пуст до СЛЕДУЮЩЕГО вызова инструмента, а шаг может
+        // идти четыре минуты.
+        let lastToolRow: { id: string; name: string; startedAt: number } | null = null;
         // D83: ленту разговора (director + обычные assistant) восстанавливаем
         // ТОЛЬКО когда она пуста — то есть после смены эпизода или холодной
         // загрузки. Если реплики уже на экране, они пришли стримингом и своего
@@ -826,6 +846,13 @@ export function ConciergePanel() {
           // D83: ход Директора — в ленте это `user`. Роут пишет его ДО цикла
           // (role='director'), поэтому без него восстановленный разговор был бы
           // монологом ума.
+          if (t.role === 'tool') {
+            if (meta.bridge === true) {
+              const name = String(t.content ?? '').trim().split(/s+/)[0] || 'инструмент';
+              lastToolRow = { id: t.id, name, startedAt: new Date(t.created_at).getTime() };
+            }
+            continue;
+          }
           if (t.role === 'director') {
             if (conversationEmpty && t.content.trim()) {
               additions.push({
@@ -893,6 +920,9 @@ export function ConciergePanel() {
             });
           }
         }
+        // D106 — восстановленный шаг зажигаем ДО раннего возврата ниже: он есть даже
+        // тогда, когда новых сообщений в ленте нет (весь ход — одни вызовы инструментов).
+        if (lastToolRow) setToolPlashka(lastToolRow);
         console.log('[ConciergePanel] additions after filter:', additions.length, additions.map((a) => ({ role: a.role, turnId: a.turnId, head: a.content.slice(0, 30) })));
         if (additions.length === 0) return;
         setMessages((prev) => {
@@ -931,7 +961,7 @@ export function ConciergePanel() {
           .from('concierge_turns')
           .select('id,role,content,metadata,created_at')
           .eq('thread_id', threadId)
-          .in('role', ['system', 'assistant'])
+          .in('role', ['system', 'assistant', 'tool'])
           .order('created_at', { ascending: false })
           .limit(20);
         if (cancelled || error || !data) return;
@@ -1986,7 +2016,12 @@ export function ConciergePanel() {
               className="block w-full resize-none rounded-lg bg-[var(--bg-elevated)] border border-glass px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--accent-primary)]"
             />
           </div>
-          {streaming ? (
+          {/* D107 — «Стоп» живёт от ЗАМКА хода, а не от локального streaming.
+              streaming гаснет через миллисекунды после того, как POST вернул ok, —
+              то есть ровно тогда, когда ход только начинается. Многоминутный ход
+              (генерация клипов) шёл без единой кнопки отмены на экране, хотя
+              серверная отмена готова: /api/mind/turn → mind-bridge (metadata.cancel). */}
+          {streaming || (MIND_BRIDGE && turnBusySince) ? (
             <Button
               type="button"
               size="md"
